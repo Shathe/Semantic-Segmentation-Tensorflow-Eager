@@ -56,8 +56,8 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
 
 		train_acc = get_accuracy(loader, model, train=True)
 		test_acc = get_accuracy(loader, model, train=False)
-		print('Train accuracy: ' + str(train_acc))
-		print('Test accuracy: ' + str(test_acc))
+		print('Train accuracy: ' + str(train_acc.numpy()))
+		print('Test accuracy: ' + str(test_acc.numpy()))
 
 
 # Erase the elements if they are from ignore class
@@ -91,7 +91,7 @@ def get_accuracy(loader, model, train=True):
 
 		accuracy(labels, predictions)
 		# get the train and test accuracy from the model
-
+		return accuracy.result()
 
 if __name__ == "__main__":
 
