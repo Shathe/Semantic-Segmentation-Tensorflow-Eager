@@ -91,7 +91,7 @@ def get_accuracy(loader, model, train=True):
 
 		accuracy(labels, predictions)
 		# get the train and test accuracy from the model
-		return accuracy.result()
+	return accuracy.result()
 
 if __name__ == "__main__":
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
  	# optimizer
 	optimizer = tf.train.AdamOptimizer(0.001)
 
-	train(loader=loader, model=model, epochs=20, batch_size=4)
+	train(loader=loader, model=model, epochs=100, batch_size=8)
 	get_params(model)
 	
 

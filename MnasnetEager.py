@@ -15,7 +15,7 @@ class MnasnetFC(tf.keras.Model):
 
 		# Frist block (non-identity) Conv+ DepthwiseConv
 		self.conv1_block1 = depthwiseConv(depth_multiplier=1, kernel_size=3, strides=1)
-		self.bn1_block1 = layers.BatchNormalization(epsilon=1e-3, momentum=0.999)
+		self.bn1_block1 = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 		self.relu1_block1 = layers.ReLU(max_value=6)
 
 		self.conv_bn_block_1 = Conv_BN(filters=16*alpha, kernel_size=1, strides=1)
@@ -141,7 +141,7 @@ class MBConv_idskip(tf.keras.Model):
 
 		#depthwiseconv2
 		self.depthwise_conv = depthwiseConv(depth_multiplier=1, kernel_size=kernel_size, strides=strides)
-		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.999)
+		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 		self.relu = layers.ReLU(max_value=6)
 
 		#conv3
@@ -178,7 +178,7 @@ class Conv_BN(tf.keras.Model):
 		self.strides = strides
 
 		self.conv = conv(filters=filters, kernel_size=kernel_size, strides=strides)
-		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.999)
+		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 		self.relu = layers.ReLU(max_value=6)
 
 
@@ -203,7 +203,7 @@ class Transpose_Conv_BN(tf.keras.Model):
 		self.strides = strides
 
 		self.conv = transposeConv(filters=filters, kernel_size=kernel_size, strides=strides)
-		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.999)
+		self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 		self.relu = layers.ReLU(max_value=6)
 
 
