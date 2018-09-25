@@ -66,29 +66,29 @@ class MnasnetFC(tf.keras.Model):
 		self.conv_bn_last = Conv_BN(filters=1152*alpha, kernel_size=1, strides=1)
 
 		# Decoder
-		self.blocks_up.append(Transpose_Conv_BN(filters=192*alpha, kernel_size=3, strides=2))
+		self.blocks_up.append(Upsampling())
 		self.blocks_up.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
 						 filters_multiplier=6, alpha=alpha))
 		self.blocks_up.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
 						 filters_multiplier=6, alpha=alpha))
 
 
-		self.blocks_up.append(Transpose_Conv_BN(filters=80*alpha, kernel_size=3, strides=2))
+		self.blocks_up.append(Upsampling())
 		self.blocks_up.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=3, strides=1, 
 						 filters_multiplier=6, alpha=alpha))
 		self.blocks_up.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=3, strides=1, 
 						 filters_multiplier=6, alpha=alpha))
 
-		self.blocks_up.append(Transpose_Conv_BN(filters=40*alpha, kernel_size=3, strides=2))
+		self.blocks_up.append(Upsampling())
 		self.blocks_up.append(MBConv_idskip(input_filters=40*alpha, filters=40, kernel_size=5, strides=1, 
 						 filters_multiplier=3, alpha=alpha))
 
-		self.blocks_up.append(Transpose_Conv_BN(filters=24*alpha, kernel_size=3, strides=2))
+		self.blocks_up.append(Upsampling())
 		self.blocks_up.append(MBConv_idskip(input_filters=24*alpha, filters=24, kernel_size=3, strides=1, 
 						 filters_multiplier=3, alpha=alpha))
 
 
-		self.blocks_up.append(Transpose_Conv_BN(filters=16*alpha, kernel_size=3, strides=2))
+		self.blocks_up.append(Upsampling())
 
 		self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
@@ -193,6 +193,8 @@ class Conv_BN(tf.keras.Model):
 
 class Transpose_Conv_BN(tf.keras.Model):
 
+
+
 	def __init__(self, filters, kernel_size, strides=1):
 		super(Transpose_Conv_BN, self).__init__()
 
@@ -206,11 +208,25 @@ class Transpose_Conv_BN(tf.keras.Model):
 
 
 	def call(self, inputs, training=None, activation=True):
-
 		x = self.conv(inputs)
 		x = self.bn(x, training=training)
 		if activation:
 			x = self.relu(x)
+
+		return x
+
+class Upsampling(tf.keras.Model):
+
+
+
+	def __init__(self):
+		super(Upsampling, self).__init__()
+
+
+
+	def call(self, inputs,  training=None,  size_multiplier=2):
+        	x = tf.image.resize_bilinear(inputs, [inputs.get_shape()[1].value*size_multiplier,
+					inputs.get_shape()[2].value*size_multiplier], align_corners=True)
 
 		return x
 
