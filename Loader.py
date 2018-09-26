@@ -272,7 +272,7 @@ class Loader:
 
 			# modify the mask and the labels. Mask
 
-			mask_ignore = label == self.ignore_label
+			mask_ignore = label >= self.n_classes
 			mask_image[mask_ignore] = 0 # The ignore pixels will have a value o 0 in the mask
 			label[mask_ignore] = self.n_classes # The ignore label will be n_classes
 
