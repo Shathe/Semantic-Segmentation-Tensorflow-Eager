@@ -1,13 +1,14 @@
 from __future__ import print_function
 import os
 import numpy as np
+from keras.preprocessing import image
 from keras.utils.np_utils import to_categorical
 import glob
 import cv2
 import random
 from augmenters import get_augmenter
 import scipy
-
+from utils.utils import preprocess
 
 random.seed(os.urandom(10))
 
@@ -16,21 +17,15 @@ problemTypes=['classification', 'segmentation']
 
 class Loader:
 
-	def __init__(self, dataFolderPath, width=224, height=224, channels=3, n_classes=21,  problemType='classification', ignore_label=None, median_frequency=0.00, image_weight=False):
+	def __init__(self, dataFolderPath, width=224, height=224, channels=3, n_classes=21,  problemType='segmentation', median_frequency=0):
 		self.dataFolderPath=dataFolderPath
 		self.height = height
 		self.width = width
 		self.dim = channels
-		self.n_classes = n_classes
-		self.ignore_label = ignore_label # label to ignore
 		self.freq = np.zeros(n_classes) # vector for calculating the class frequency
 		self.index_train = 0 #indexes for iterating while training
 		self.index_test = 0 #indexes for iterating while testing
 		self.median_frequency_soft = median_frequency # softener value for the median frequency balancing (if median_frequency==0, nothing is applied, if median_frequency==1, the common formula is applied)
-		self.image_weight=image_weight # for semantic segmentation. If true, a folder with weights for every iamge has to be provided (same folder level than labels and images)
-		if ignore_label and ignore_label < n_classes:
-
-			raise Exception( 'please, change the labeling in order to put the ignore label value to the last value > nunm_classes')
 
 		print('Reading files...')
 		'''
@@ -61,9 +56,9 @@ class Loader:
 					weights       [optional]
 						weight n..
 		'''
+
 		# Load filepaths
 		files = glob.glob(os.path.join(dataFolderPath,'*','*','*'))
-
 
 		print('Structuring test and train files...')
 		self.test_list = [file for file in files if '/test/' in file]
@@ -85,11 +80,6 @@ class Loader:
 			np.random.shuffle(s)
 			self.train_list=np.array(self.train_list)[s]
 
-			# Shuffle test
-			s = np.arange(len(self.test_list))
-			np.random.shuffle(s)
-			self.test_list=np.array(self.test_list)[s]
-
 			print('Loaded '+ str(len(self.train_list)) +' training samples')
 			print('Loaded '+ str(len(self.test_list)) +' testing samples')
 			classes_train = [file.split('/train/')[1].split('/')[0] for file in self.train_list]
@@ -106,6 +96,8 @@ class Loader:
 			else:
 				self.median_freq = np.ones(self.n_classes)
 				print(self.median_freq)
+
+
 		elif problemType == 'segmentation':
 			# The structure has to be dataset/train/images/image.png
 			# The structure has to be dataset/train/labels/label.png
@@ -117,24 +109,13 @@ class Loader:
 			self.label_train_list = [file for file in self.train_list if '/labels/' in file]
 			self.label_test_list = [file for file in self.test_list if '/labels/' in file]
 
-			if self.image_weight:
-				self.weight_train_list = [file for file in self.train_list if '/weights/' in file]
-				self.weight_test_list = [file for file in self.test_list if '/weights/' in file]
-				self.weight_test_list.sort()
-				self.weight_train_list.sort()
-
-
 			self.label_test_list.sort()
 			self.image_test_list.sort()
 			self.label_train_list.sort()
 			self.image_train_list.sort()
 
 			# Shuffle train
-			s = np.arange(len(self.image_train_list))
-			np.random.shuffle(s)
-
-			self.image_train_list=np.array(self.image_train_list)[s]
-			self.label_train_list=np.array(self.label_train_list)[s]
+			self.suffle_segmentation()
 
 			print('Loaded '+ str(len(self.image_train_list)) +' training samples')
 			print('Loaded '+ str(len(self.image_test_list)) +' testing samples')
@@ -146,6 +127,13 @@ class Loader:
 		
 		print('Dataset contains '+ str(self.n_classes) +' classes')
 
+	def suffle_segmentation(self):
+		if self.problemType == 'segmentation':
+			s = np.arange(len(self.image_train_list))
+			np.random.shuffle(s)
+			self.image_train_list=np.array(self.image_train_list)[s]
+			self.label_train_list=np.array(self.label_train_list)[s]
+
 
 	# Returns a weighted mask from a binary mask
 	def _from_binarymask_to_weighted_mask(self, labels, masks):
@@ -154,48 +142,35 @@ class Loader:
 		and 1's means pixels to take into account.
 		This function transofrm those 1's into a weight using the median frequency 
 		'''
-		if self.median_frequency_soft==0:
-			return masks
+		weights = self.median_freq
+		for i in xrange(masks.shape[0]):
+			# for every mask of the batch
+			label_image = labels[i,:,:]
+			mask_image = masks[i,:,:]
+			dim_1 = mask_image.shape[0]
+			dim_2 = mask_image.shape[1]
+			label_image = np.reshape(label_image, (dim_2*dim_1))
+			mask_image = np.reshape(mask_image, (dim_2*dim_1))
 
-		else:
-			weights = self.median_freq
-			for i in xrange(masks.shape[0]):
-				# for every mask of the batch
-				label_image = labels[i,:,:]
-				mask_image = masks[i,:,:]
-				dim_1 = mask_image.shape[0]
-				dim_2 = mask_image.shape[1]
-				label_image = np.reshape(label_image, (dim_2*dim_1))
-				mask_image = np.reshape(mask_image, (dim_2*dim_1))
+			for label_i in xrange(self.n_classes):
+				# multiply the mask so far, with the median frequency wieght of that label
+				mask_image[label_image == label_i] = mask_image[label_image == label_i] * weights[label_i]
+				# unique, counts = np.unique(mask_image, return_counts=True)
 
-				for label_i in xrange(self.n_classes):
-					# multiply the mask so far, with the median frequency wieght of that label
-					mask_image[label_image == label_i] = mask_image[label_image == label_i] * weights[label_i]
-					# unique, counts = np.unique(mask_image, return_counts=True)
+			mask_image = np.reshape(mask_image, (dim_1, dim_2))
+			masks[i,:,:] = mask_image
 
-				mask_image = np.reshape(mask_image, (dim_1, dim_2))
-				masks[i,:,:] = mask_image
-
-			return masks
+		return masks
 
 	def _perform_augmentation_segmentation(self, img, label, mask_image, augmenter ):
-		seq_image_contrast, seq_image_translation, seq_label, seq_mask = get_augmenter(name=augmenter, c_val=self.ignore_label)
+		seq_image, seq_label, seq_mask = get_augmenter(name=augmenter, c_val=255)
 
 		
 		#apply some contrast  to de rgb image
 		img=img.reshape(sum(((1,),img.shape),()))
-		img = seq_image_contrast.augment_images(img)  
+		img = seq_image.augment_images(img)  
 		img=img.reshape(img.shape[1:])
 		
-
-		#Apply shifts and rotations to the mask, labels and image
-		
-		# Reshapes for the AUGMENTER framework
-		# the loops are due to the external library failures
-		img=img.reshape(sum(((1,),img.shape),()))
-		img = seq_image_translation.augment_images(img)  
-		img=img.reshape(img.shape[1:])
-
 		label=label.reshape(sum(((1,),label.shape),()))
 		label = seq_label.augment_images(label)
 		label=label.reshape(label.shape[1:])
@@ -213,11 +188,10 @@ class Loader:
 		y = np.zeros([size, self.height, self.width], dtype=np.uint8)
 		mask = np.ones([size, self.height, self.width], dtype=np.float32)
 
-
 		if train:
 			image_list = self.image_train_list
 			label_list = self.label_train_list
-			if self.image_weight: weight_list = self.weight_train_list
+
 			# Get [size] random numbers
 			indexes = [i%len(image_list) for i in range(self.index_train, self.index_train+size)]
 			self.index_train=indexes[-1] + 1
@@ -225,17 +199,13 @@ class Loader:
 		else:
 			image_list = self.image_test_list
 			label_list = self.label_test_list
-			if self.image_weight: weight_list = self.weight_test_list
 
-
-		 # Get [size] random numbers
+		 	# Get [size] random numbers
 			indexes = [i%len(image_list) for i in range(self.index_test, self.index_test+size)]
 			self.index_test=indexes[-1] + 1
 
 		random_images = [image_list[number] for number in indexes]
 		random_labels = [label_list[number] for number in indexes]
-		if self.image_weight: random_weights = [weight_list[number] for number in indexes]
-
 
 
 		# for every random image, get the image, label and mask.
@@ -244,9 +214,14 @@ class Loader:
 			if self.dim == 1:
 				img = cv2.imread(random_images[index], 0)
 			else:
-				img = cv2.imread(random_images[index])
+				#img = cv2.imread(random_images[index])
+				img = image.load_img(random_images[index])
+				img = image.img_to_array(img)
+
+
 
 			label = cv2.imread(random_labels[index], 0)
+			mask_image = mask[index, :, :]
 
 
 			# Reshape images if its needed
@@ -255,51 +230,34 @@ class Loader:
 			if label.shape[1] != self.width or label.shape[0] != self.height:
 				label = cv2.resize(label, (self.width, self.height), interpolation = cv2.INTER_NEAREST)
 
-
-			mask_image = mask[index, :, :]
-
-			if self.image_weight:
-				mask_weight = np.load(random_weights[index])
-				if mask_weight.shape[1] != self.width or mask_weight.shape[0] != self.height:
-					mask_weight = cv2.resize(mask_weight, (self.width, self.height), interpolation=cv2.INTER_AREA)
-					#raise Exception('When using image weights, the dimensions of the weigths and the specify height and width must match')
-					#print('WARNING: When using image weights, the dimensions of the weigths and the specify height and width must match')
-				mask_image = np.squeeze(mask_weight)
-
 			if train and augmenter:
 				img, label, mask_image = self._perform_augmentation_segmentation(img, label, mask_image, augmenter)
 
 
 			# modify the mask and the labels. Mask
-
 			mask_ignore = label >= self.n_classes
 			mask_image[mask_ignore] = 0 # The ignore pixels will have a value o 0 in the mask
-			label[mask_ignore] = self.n_classes # The ignore label will be n_classes
+			label[mask_ignore] = 0 # The ignore label will be n_classes
 
 			if self.dim == 1:
 				img = np.reshape(img, (img.shape[0], img.shape[1], self.dim))
-
 
 			x[index, :, :, :] = img
 			y[index, :, :] = label
 			mask[index, :, :] = mask_image
 
 		# Apply weights to the mask 
-		mask = self._from_binarymask_to_weighted_mask(y, mask)
+		if self.median_frequency_soft>0:
+			mask = self._from_binarymask_to_weighted_mask(y, mask)
 
 		# the labeling to categorical (if 5 classes and value is 2:  2 -> [0,0,1,0,0])
 		a, b, c =y.shape
 		y = y.reshape((a*b*c))
 
-
 		# Convert to categorical. Add one class for ignored pixels
-		y = to_categorical(y, num_classes=self.n_classes+1)
-		y = y.reshape((a,b,c,self.n_classes+1)).astype(np.uint8)
+		y = to_categorical(y, num_classes=self.n_classes)
+		y = y.reshape((a,b,c,self.n_classes)).astype(np.uint8)
 
-
-		#tf.keras.applications.imagenet_utils.preprocess_input(x, mode='tf')
-		#x = tf.keras.applications.xception.preprocess_input(x)
-		x = x.astype(np.float32) / 127.5 - 1
 		return x, y, mask
 
 
@@ -348,11 +306,6 @@ class Loader:
 			augmenter_seq = get_augmenter(name=augmenter)
 			x = augmenter_seq.augment_images(x)
 
-
-		#x = x.astype(np.float32) 
-		#tf.keras.applications.imagenet_utils.preprocess_input(x, mode='tf')
-		#x = tf.keras.applications.xception.preprocess_input(x)
-		x = x.astype(np.float32) / 127.5 - 1
 
 		return x, y
 
@@ -408,17 +361,16 @@ class Loader:
 		
 if __name__ == "__main__":
 
-	loader = Loader('./Datasets/camvid', problemType = 'segmentation', ignore_label=11, n_classes=11,width=480, height=360, median_frequency=0.25, image_weight=True)
+	loader = Loader('./Datasets/camvid', problemType = 'segmentation', n_classes=11,width=480, height=360, median_frequency=0.00)
 	# print(loader.median_frequency_exp())
 	x, y, mask =loader.get_batch(size=2, augmenter='segmentation')
 
 	
 	for i in xrange(2):
-
-		cv2.imshow('x',((x[i,:,:,:]+0.5)*255).astype(np.uint8))
-		cv2.imshow('y',(np.argmax(y,3)[i,:,:]).astype(np.uint8))
+		cv2.imshow('x',((x[i,:,:,:]+1)*127.5).astype(np.uint8))
+		cv2.imshow('y',(np.argmax(y,3)[i,:,:]*25).astype(np.uint8))
 		print(mask.shape)
-		cv2.imshow('mask',(mask[i,:,:]*70).astype(np.uint8))
+		cv2.imshow('mask',(mask[i,:,:]*255).astype(np.uint8))
 		cv2.waitKey(0)
 	cv2.destroyAllWindows()
 	x, y, mask =loader.get_batch(size=3, train=False)
