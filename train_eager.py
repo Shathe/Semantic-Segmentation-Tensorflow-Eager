@@ -115,8 +115,8 @@ def compute_iou(conf_matrix):
 if __name__ == "__main__":
     n_classes = 11
     dataset_path = 'Datasets/camvid'
-    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=128,
-                           height=128)
+    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=360,
+                           height=360)
 
     # build model and optimizer
     model = MnasnetEager.MnasnetFC(num_classes=n_classes)
