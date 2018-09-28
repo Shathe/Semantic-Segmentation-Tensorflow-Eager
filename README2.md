@@ -14,6 +14,7 @@ Try to use a tf.keras.application model to the eager execution and see differenc
     e4 = tf.get_default_graph().get_tensor_by_name("add_15/add:0")
     '''
 Save model (see https://github.com/Shathe/MNasNet-Keras-Tensorflow)
+Poner lo del learning rate descendente con una formula
 Implement Dense Decoder Shortcut Connections for Single-Pass Semantic Segmentation
 Implement the DenseASPP
 Implement flip-inference (horizontal)
