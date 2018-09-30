@@ -2,49 +2,35 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 import nets.MnasnetEager as MnasnetEager
+import nets.Network as ResnetFCN
 import Loader
 from sklearn.metrics import confusion_matrix
+import math
+from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, erase_ignore_pixels, compute_iou, get_metrics
 
 # enable eager mode
 tf.enable_eager_execution()
-tf.set_random_seed(0)
-np.random.seed(0)
+tf.set_random_seed(7)
+np.random.seed(7)
 
-
-# Prints the number of parameters of a model
-def get_params(model):
-    total_parameters = 0
-    for variable in model.variables:
-        # shape is an array of tf.Dimension
-        shape = variable.get_shape()
-        variable_parameters = 1
-
-        for dim in shape:
-            variable_parameters *= dim.value
-        total_parameters += variable_parameters
-    print("Total parameters of the net: " + str(total_parameters) + " == " + str(total_parameters / 1000000.0) + "M")
-
-
-def convert_to_tensors(list_to_convert):
-    if list_to_convert != []:
-        return [tf.convert_to_tensor(list_to_convert[0])] + convert_to_tensors(list_to_convert[1:])
-    else:
-        return []
 
 
 # Trains the model for certains epochs on a dataset
-def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=False):
+def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4):
+
     training_samples = len(loader.image_train_list)
     steps_per_epoch = (training_samples / batch_size) + 1
-
     for epoch in xrange(epochs):
-        print('epoch: ' + str(epoch))
+        lr_decay(lr, init_lr, 1e-8, epoch, epochs-1)
+        print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()) )
+        
         for step in xrange(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
                 x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter)
+                x = preprocess(x, mode='imagenet')
                 y = y[:, :, :, :loader.n_classes]  # eliminate the ignore labels channel for computing the loss
-                [x, y, mask] = convert_to_tensors([x, y, mask])
+                [x, y, mask] = convert_to_tensors([x, y, mask]) 
 
                 y_ = model(x, training=True)
 
@@ -54,75 +40,51 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
             # Gets gradients and applies them
             grads = g.gradient(loss, model.variables)
             optimizer.apply_gradients(zip(grads, model.variables))
+            
+        train_acc, train_miou = get_metrics(loader, model, loader.n_classes,  train=True)
+        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False, scales=[ 0.75, 1.5, 1])
+        test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False, scales=[1])
 
-        train_acc, train_miou = get_metrics(loader, model, train=True)
-        test_acc, test_miou = get_metrics(loader, model, train=False)
         print('Train accuracy: ' + str(train_acc.numpy()))
         print('Train miou: ' + str(train_miou))
         print('Test accuracy: ' + str(test_acc.numpy()))
+        print('Test accuracy scaled/flipped: ' + str(test_acc_scaled_flp.numpy()))
         print('Test miou: ' + str(test_miou))
-
-
-# Erase the elements if they are from ignore class
-def erase_ignore_pixels(labels, predictions, mask):
-    indices = tf.squeeze(tf.where(tf.greater(mask, 0)))  # ignore labels
-    labels = tf.cast(tf.gather(labels, indices), tf.int64)
-    predictions = tf.gather(predictions, indices)
-
-    return labels, predictions
-
-
-# get accuracy from the model
-def get_metrics(loader, model, train=True):
-    accuracy = tfe.metrics.Accuracy()
-    conf_matrix = np.zeros ((n_classes, n_classes))
-    if train:
-        samples = len(loader.image_train_list)
-    else:
-        samples = len(loader.image_test_list)
-
-    # Get train accuracy
-    for step in xrange(samples):  # for every batch
-        x, y, mask = loader.get_batch(size=1, train=train, augmenter=False)
-        [x, y] = convert_to_tensors([x, y])
-
-        y_ = model(x, training=train)
-
-        # Rephape
-        y = tf.reshape(y, [y.shape[1] * y.shape[2] * y.shape[0], y.shape[3]])
-        y_ = tf.reshape(y_, [y_.shape[1] * y_.shape[2] * y_.shape[0], y_.shape[3]])
-        mask = tf.reshape(mask, [mask.shape[1] * mask.shape[2] * mask.shape[0]])
-
-        labels, predictions = erase_ignore_pixels(labels=tf.argmax(y, 1), predictions=tf.argmax(y_, 1), mask=mask)
-        accuracy(labels, predictions)
-        conf_matrix += confusion_matrix(labels, predictions, labels=range(0, n_classes))
-    # get the train and test accuracy from the model
-    return accuracy.result(), compute_iou(conf_matrix)
-
-
-
-def compute_iou(conf_matrix):
-    intersection = np.diag(conf_matrix)
-    ground_truth_set = conf_matrix.sum(axis=1)
-    predicted_set = conf_matrix.sum(axis=0)
-    union = ground_truth_set + predicted_set - intersection
-    IoU = intersection / union.astype(np.float32)
-    IoU[np.isnan(IoU)] = 0
-    return np.mean(IoU)
-
+        print('Test miou scaled/flipped: ' + str(test_miou_scaled_flp))
+        print ''
 
 
 if __name__ == "__main__":
     n_classes = 11
+    batch_size = 1
+    epochs = 10
+    width = 256
+    height = 192
+    lr = 1e-4
     dataset_path = 'Datasets/camvid'
-    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=360,
-                           height=360)
+    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=width, height=height)
 
     # build model and optimizer
-    model = MnasnetEager.MnasnetFC(num_classes=n_classes)
+    model = ResnetFCN.ResnetFCN(num_classes=n_classes)
 
     # optimizer
-    optimizer = tf.train.AdamOptimizer(0.0003)
+    learning_rate = tfe.Variable(lr)
+    optimizer = tf.train.AdamOptimizer(learning_rate)
 
-    train(loader=loader, model=model, epochs=100, batch_size=8)
+    # Init model (variables and input shape)
+    init_model(model, input_shape=(batch_size, width, height, 3))
+
+    # Init saver 
+    saver_model = tfe.Saver(var_list=model.variables) # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
+
+    restore_state(saver_model, 'weights/last_saver')
+
     get_params(model)
+
+    train(loader=loader, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate, init_lr=lr)
+    saver_model.save('weights/last_saver')
+
+
+
+
+

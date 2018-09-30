@@ -3,88 +3,33 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers, activations
 
-class MnasnetFC(tf.keras.Model):
-	def __init__(self, num_classes,  alpha=1, input_shape=(224,224,3), **kwargs):
-		super(MnasnetFC, self).__init__(**kwargs)
-		self.blocks = []
+
+
+class ResnetFCN(tf.keras.Model):
+	def __init__(self, num_classes,  alpha=1, input_shape=(None, None, 3), **kwargs):
+		super(ResnetFCN, self).__init__(**kwargs)
+		base_model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=input_shape,  pooling='avg')
+		self.resnet_output = tf.keras.Model(inputs=base_model.input, outputs=base_model.get_layer('add_15').output)
+
+
 		self.blocks_up = []
 
-		self.conv_bn_initial = Conv_BN(filters=32*alpha, kernel_size=3, strides=2)
-
-		# Frist block (non-identity) Conv+ DepthwiseConv
-		self.conv1_block1 = depthwiseConv(depth_multiplier=1, kernel_size=3, strides=1)
-		self.bn1_block1 = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
-		self.relu1_block1 = layers.ReLU(max_value=6)
-
-		self.conv_bn_block_1 = Conv_BN(filters=16*alpha, kernel_size=1, strides=1)
-
-		# MBConv3 3x3
-		self.blocks.append(MBConv_idskip(input_filters=16*alpha, filters=24, kernel_size=3, strides=2, 
-						 filters_multiplier=3, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=24*alpha, filters=24, kernel_size=3, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=24*alpha, filters=24, kernel_size=3, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
-
-		# MBConv3 5x5
-		self.blocks.append(MBConv_idskip(input_filters=24*alpha, filters=40, kernel_size=5, strides=2, 
-						 filters_multiplier=3, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=40*alpha, filters=40, kernel_size=5, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=40*alpha, filters=40, kernel_size=5, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
-		# MBConv6 5x5
-		self.blocks.append(MBConv_idskip(input_filters=40*alpha, filters=80, kernel_size=5, strides=2, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-
-		# MBConv6 3x3
-		self.blocks.append(MBConv_idskip(input_filters=80*alpha, filters=96, kernel_size=3, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=96*alpha, filters=96, kernel_size=3, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-
-		# MBConv6 5x5
-		self.blocks.append(MBConv_idskip(input_filters=96*alpha, filters=192, kernel_size=5, strides=2, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		# MBConv6 3x3
-		self.blocks.append(MBConv_idskip(input_filters=192*alpha, filters=320, kernel_size=3, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-
-		# Last convolution
-		self.conv_bn_last = Conv_BN(filters=1152*alpha, kernel_size=1, strides=1)
 
 		# Decoder
+		self.blocks_up.append(MBConv_idskip(input_filters=512, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
+		self.blocks_up.append(MBConv_idskip(input_filters=256, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
 		self.blocks_up.append(Upsampling())
-		self.blocks_up.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks_up.append(MBConv_idskip(input_filters=192*alpha, filters=192, kernel_size=5, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-
+		self.blocks_up.append(MBConv_idskip(input_filters=256, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
 
 		self.blocks_up.append(Upsampling())
-		self.blocks_up.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=3, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
-		self.blocks_up.append(MBConv_idskip(input_filters=80*alpha, filters=80, kernel_size=3, strides=1, 
-						 filters_multiplier=6, alpha=alpha))
+		self.blocks_up.append(MBConv_idskip(input_filters=128, filters=192, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha))
 
 		self.blocks_up.append(Upsampling())
-		self.blocks_up.append(MBConv_idskip(input_filters=40*alpha, filters=40, kernel_size=5, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
+		self.blocks_up.append(MBConv_idskip(input_filters=64, filters=192, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha))
 
 		self.blocks_up.append(Upsampling())
-		self.blocks_up.append(MBConv_idskip(input_filters=24*alpha, filters=24, kernel_size=3, strides=1, 
-						 filters_multiplier=3, alpha=alpha))
 
+		self.blocks_up.append(MBConv_idskip(input_filters=32, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
 
 		self.blocks_up.append(Upsampling())
 
@@ -93,21 +38,8 @@ class MnasnetFC(tf.keras.Model):
 
 
 	def call(self, inputs, training=None, mask=None):
-		out = self.conv_bn_initial(inputs, training=training)
-
-
-		out = self.conv1_block1(out)
-		out = self.bn1_block1(out, training=training)
-		out = self.relu1_block1(out)
-
-		out = self.conv_bn_block_1(out, training=training)
-
-		# forward pass through all the blocks
-		for block in self.blocks:
-			out = block(out, training=training)
-
-		out = self.conv_bn_last(out, training=training)
-
+		out = self.resnet_output.__call__(inputs, training=training)
+		
 		for block in self.blocks_up:
 			out = block(out, training=training)
 

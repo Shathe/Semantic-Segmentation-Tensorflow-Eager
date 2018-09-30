@@ -39,33 +39,6 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
                 ))])
             return seq_rgb
 
-
-        if 'coral' in name:
-            scale = random.uniform(0.5, 2)
-
-            seq_rgb = iaa.Sequential([
-
-                iaa.Fliplr(0.50),  # horizontally flip 50% of the images
-                iaa.Flipud(0.50),  # vertically flip 50% of the images
-                sometimes(iaa.Add((-12, 12))),
-                sometimes(iaa.Multiply((0.95, 1.10), per_channel=False)),
-                sometimes(iaa.GaussianBlur(sigma=(0, 40))),
-                sometimes(iaa.ContrastNormalization((0.90, 1.20))),
-                alot(iaa.Affine(
-                    scale={"x": (scale), "y": (scale)},
-                    # scale images to 80-120% of their size, individually per axis
-                    translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)},
-                    # translate by -20 to +20 percent (per axis)
-                    rotate=(-45, 45),  # rotate by -45 to +45 degrees
-                    order=1,  #bilinear interpolation (fast)
-                    cval=0,
-                    mode="reflect" # `edge`, `wrap`, `reflect` or `symmetric`
-                    # cval=(0, 255),  # if mode is constant, use a cval between 0 and 255
-                    # mode=ia.ALL  # use any of scikit-image's warping modes (see 2nd image from the top for examples)
-                ))])
-            return seq_rgb
-
-
         elif 'segmentation' in name:
             #create one per image. give iamge, label and mask to the pipeling
 
@@ -82,24 +55,23 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
                 value_flip2=0
 
 
-            value_add = random.uniform(-12, 12)
+            value_add = random.uniform(-10, 10)
             value_Multiply = random.uniform(0.95, 1.10)
-            value_GaussianBlur = random.uniform(0.0,0.35)
-            ContrastNormalization = random.uniform(0.90, 1.18)
-            scale = random.uniform(0.80, 1.40)
-            value_x2 = random.uniform(-0.15, 0.15)
-            value_y2 = random.uniform(-0.15, 0.15)
-            val_rotate = random.uniform(-45,45)
+            #value_GaussianBlur = random.uniform(0.0,0.05)
+            ContrastNormalization = random.uniform(0.90, 1.20)
+            scale = random.uniform(0.50, 2)
+            value_x2 = random.uniform(-0.20, 0.20)
+            value_y2 = random.uniform(-0.20, 0.20)
+            val_rotate = random.uniform(-10,10)
 
-         
-
-
-
-    #uniform(-30, 30)
-
+        
             seq_image = iaa.Sequential([
+            	sometimes(iaa.Add((value_add, value_add))),
+                sometimes(iaa.Multiply((value_Multiply, value_Multiply), per_channel=False)),
+                #sometimes(iaa.GaussianBlur(sigma=(value_GaussianBlur, value_GaussianBlur))),
+                sometimes(iaa.ContrastNormalization((ContrastNormalization, ContrastNormalization))),
                 iaa.Fliplr(value_flip),  # horizontally flip 50% of the images
-                iaa.Flipud(value_flip2),  # vertically flip 50% of the images
+                #iaa.Flipud(value_flip2),  # vertically flip 50% of the images
                 iaa.Affine(
                     scale={"x": (scale), "y": (scale)},
                     # scale images to 80-120% of their size, individually per axis
@@ -116,17 +88,11 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
 
                 )])
             
-            seq_image2 = iaa.Sequential([
-                sometimes(iaa.Add((value_add, value_add))),
-                sometimes(iaa.Multiply((value_Multiply, value_Multiply), per_channel=False)),
-                sometimes(iaa.GaussianBlur(sigma=(value_GaussianBlur, value_GaussianBlur))),
-                sometimes(iaa.ContrastNormalization((ContrastNormalization, ContrastNormalization)))])
-            
                 
 
             seq_label = iaa.Sequential([
                 iaa.Fliplr(value_flip),  # horizontally flip 50% of the images
-                iaa.Flipud(value_flip2),  # vertically flip 50% of the images
+                #iaa.Flipud(value_flip2),  # vertically flip 50% of the images
                 iaa.Affine(
                     scale={"x": (scale), "y": (scale)},
                     # scale images to 80-120% of their size, individually per axis
@@ -144,7 +110,7 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
             
             seq_mask = iaa.Sequential([
                 iaa.Fliplr(value_flip),  # horizontally flip 50% of the images
-                iaa.Flipud(value_flip2),  # vertically flip 50% of the images
+                #iaa.Flipud(value_flip2),  # vertically flip 50% of the images
                 iaa.Affine(
                     scale={"x": (scale), "y": (scale)},
                     # scale images to 80-120% of their size, individually per axis
@@ -159,26 +125,8 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
                 )])
              
 
-            return seq_image2, seq_image, seq_label, seq_mask
+            return seq_image, seq_label, seq_mask
           
-        elif 'caltech' in name:
-            seq_multi = iaa.Sequential([
-                iaa.Fliplr(0.25),  # horizontally flip 50% of the images
-                iaa.Flipud(0.25),  # horizontally flip 50% of the images
-                sometimes(iaa.Affine(
-                    # scale images to 80-120% of their size, individually per axis
-                    # translate by -20 to +20 percent (per axis)
-                    scale={"x": (0.8, 1.2), "y": (0.8, 1.2)},
-                    # scale images to 80-120% of their size, individually per axis
-                    translate_percent={"x": (-0.20, 0.2), "y": (-0.2, 0.2)},
-                    # translate by -20 to +20 percent (per axis)
-                    rotate=(-30, 30),  # rotate by -45 to +45 degrees
-                    order=0,  # use nearest neighbour
-                    cval=127.5,
-                    mode="constant"
-                ))
-            ])
-            return seq_multi
         else:
 
             seq_multi = iaa.Sequential([

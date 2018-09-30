@@ -10,7 +10,7 @@ from augmenters import get_augmenter
 import scipy
 from utils.utils import preprocess
 
-random.seed(os.urandom(10))
+np.random.seed(7)
 
 
 problemTypes=['classification', 'segmentation']
@@ -207,7 +207,6 @@ class Loader:
 		random_images = [image_list[number] for number in indexes]
 		random_labels = [label_list[number] for number in indexes]
 
-
 		# for every random image, get the image, label and mask.
 		# the augmentation has to be done separately due to augmentation
 		for index in range(size):
@@ -216,8 +215,7 @@ class Loader:
 			else:
 				#img = cv2.imread(random_images[index])
 				img = image.load_img(random_images[index])
-				img = image.img_to_array(img)
-
+				img = image.img_to_array(img).astype(np.uint8)
 
 
 			label = cv2.imread(random_labels[index], 0)
@@ -230,9 +228,9 @@ class Loader:
 			if label.shape[1] != self.width or label.shape[0] != self.height:
 				label = cv2.resize(label, (self.width, self.height), interpolation = cv2.INTER_NEAREST)
 
-			if train and augmenter:
+			# Apply augmentation the 75% of times and random.random() < 0.75
+			if train and augmenter :
 				img, label, mask_image = self._perform_augmentation_segmentation(img, label, mask_image, augmenter)
-
 
 			# modify the mask and the labels. Mask
 			mask_ignore = label >= self.n_classes
@@ -242,7 +240,7 @@ class Loader:
 			if self.dim == 1:
 				img = np.reshape(img, (img.shape[0], img.shape[1], self.dim))
 
-			x[index, :, :, :] = img
+			x[index, :, :, :] = img.astype(np.float32)
 			y[index, :, :] = label
 			mask[index, :, :] = mask_image
 
