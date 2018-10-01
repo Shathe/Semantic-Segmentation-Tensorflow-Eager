@@ -57,9 +57,9 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
 if __name__ == "__main__":
     n_classes = 11
     batch_size = 1
-    epochs = 10
+    epochs = 70
     width = 256
-    height = 192
+    height = 256
     lr = 1e-4
     dataset_path = 'Datasets/camvid'
     loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=width, height=height)

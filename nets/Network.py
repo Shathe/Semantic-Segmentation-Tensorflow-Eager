@@ -9,7 +9,7 @@ class ResnetFCN(tf.keras.Model):
 	def __init__(self, num_classes,  alpha=1, input_shape=(None, None, 3), **kwargs):
 		super(ResnetFCN, self).__init__(**kwargs)
 		base_model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=input_shape,  pooling='avg')
-		self.resnet_output = tf.keras.Model(inputs=base_model.input, outputs=base_model.get_layer('add_15').output)
+		self.resnet_output = tf.keras.Model(inputs=base_model.input, outputs=base_model.get_layer('activation_48').output)
 
 
 		self.blocks_up = []
