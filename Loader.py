@@ -1,7 +1,7 @@
 from __future__ import print_function
 import os
 import numpy as np
-from keras.preprocessing import image
+import tensorflow as tf
 from keras.utils.np_utils import to_categorical
 import glob
 import cv2
@@ -214,8 +214,8 @@ class Loader:
 				img = cv2.imread(random_images[index], 0)
 			else:
 				#img = cv2.imread(random_images[index])
-				img = image.load_img(random_images[index])
-				img = image.img_to_array(img).astype(np.uint8)
+				img = tf.keras.preprocessing.image.load_img(random_images[index])
+				img = tf.keras.preprocessing.image.img_to_array(img).astype(np.uint8)
 
 
 			label = cv2.imread(random_labels[index], 0)

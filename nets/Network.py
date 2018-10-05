@@ -1,5 +1,3 @@
-import os
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers, activations
 
@@ -8,8 +6,8 @@ from tensorflow.keras import layers, regularizers, activations
 class ResnetFCN(tf.keras.Model):
 	def __init__(self, num_classes,  alpha=1, input_shape=(None, None, 3), **kwargs):
 		super(ResnetFCN, self).__init__(**kwargs)
-		base_model = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', input_shape=input_shape,  pooling='avg')
-		self.resnet_output = tf.keras.Model(inputs=base_model.input, outputs=base_model.get_layer('activation_48').output)
+		base_model = tf.keras.applications.xception.Xception(include_top=False, weights='imagenet', input_shape=input_shape,  pooling='avg')
+		self.resnet_output = tf.keras.Model(inputs=base_model.input, outputs=base_model.get_layer('block14_sepconv2_act').output)
 
 
 		self.blocks_up = []
@@ -38,7 +36,7 @@ class ResnetFCN(tf.keras.Model):
 
 
 	def call(self, inputs, training=None, mask=None):
-		out = self.resnet_output.__call__(inputs, training=training)
+		out = self.resnet_output(inputs, training=training)
 		
 		for block in self.blocks_up:
 			out = block(out, training=training)

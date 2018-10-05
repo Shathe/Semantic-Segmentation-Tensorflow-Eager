@@ -1,13 +1,4 @@
-import tensorflow as tf
 import numpy as np
-import random
-import math
-import os
-import argparse
-import time
-import cv2
-import math
-import sys
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from sklearn.metrics import confusion_matrix
@@ -28,10 +19,12 @@ def get_params(model):
 
 
 def preprocess(x, mode='imagenet'):
-	if 'imagenet' in mode:
-		return tf.keras.applications.resnet50.preprocess_input(x)
+	if mode and 'imagenet' in mode:
+
+		return tf.keras.applications.xception.preprocess_input(x)
+		#return tf.keras.applications.resnet50.preprocess_input(x)
 	else:
-		return x.astype(float32)/127.5 - 1
+		return x.astype(np.float32)/127.5 - 1
 
 def lr_decay(lr, init_learning_rate, end_learning_rate, epoch, total_epochs, power=0.9):
 	lr.assign((init_learning_rate - end_learning_rate) * math.pow(1 - epoch / 1. / total_epochs, power) + end_learning_rate)
@@ -64,11 +57,6 @@ def erase_ignore_pixels(labels, predictions, mask):
 	return labels, predictions
 
 
-'''
-		for scale in scales:
-			numpy.resize(a, new_shape)
-
-'''
 # get accuracy from the model
 def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1]):
 	accuracy = tfe.metrics.Accuracy()

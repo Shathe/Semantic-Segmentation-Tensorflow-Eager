@@ -23,7 +23,7 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
     for epoch in xrange(epochs):
         lr_decay(lr, init_lr, 1e-8, epoch, epochs-1)
         print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()) )
-        
+
         for step in xrange(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
@@ -40,29 +40,29 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
             # Gets gradients and applies them
             grads = g.gradient(loss, model.variables)
             optimizer.apply_gradients(zip(grads, model.variables))
-            
+
         train_acc, train_miou = get_metrics(loader, model, loader.n_classes,  train=True)
-        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False, scales=[ 0.75, 1.5, 1])
+        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=True, scales=[ 0.75, 1.5, 1, 2, 0.5])
         test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False, scales=[1])
 
         print('Train accuracy: ' + str(train_acc.numpy()))
         print('Train miou: ' + str(train_miou))
         print('Test accuracy: ' + str(test_acc.numpy()))
-        print('Test accuracy scaled/flipped: ' + str(test_acc_scaled_flp.numpy()))
+        print('Test accuracy scaled: ' + str(test_acc_scaled_flp.numpy()))
         print('Test miou: ' + str(test_miou))
-        print('Test miou scaled/flipped: ' + str(test_miou_scaled_flp))
+        print('Test miou scaled: ' + str(test_miou_scaled_flp))
         print ''
 
 
 if __name__ == "__main__":
     n_classes = 11
-    batch_size = 1
-    epochs = 70
-    width = 256
-    height = 256
-    lr = 1e-4
+    batch_size = 6
+    epochs = 250
+    width = 448
+    height = 448
+    lr = 3e-4
     dataset_path = 'Datasets/camvid'
-    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=width, height=height)
+    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=width, height=height,median_frequency=0.0 )
 
     # build model and optimizer
     model = ResnetFCN.ResnetFCN(num_classes=n_classes)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     # Init model (variables and input shape)
     init_model(model, input_shape=(batch_size, width, height, 3))
 
-    # Init saver 
+    # Init saver
     saver_model = tfe.Saver(var_list=model.variables) # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
 
     restore_state(saver_model, 'weights/last_saver')
