@@ -37,12 +37,12 @@ class ResnetFCN(tf.keras.Model):
 
 	def call(self, inputs, training=None, mask=None):
 		out = self.resnet_output(inputs, training=training)
-		
+
 		for block in self.blocks_up:
 			out = block(out, training=training)
 
 		out = self.conv_logits(out)
-		
+
 		'''
 		You could return several outputs, even intermediate outputs
 		'''

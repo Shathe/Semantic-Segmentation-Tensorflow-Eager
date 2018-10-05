@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
-import nets.MnasnetEager as MnasnetEager
+import os
 import nets.Network as ResnetFCN
 import Loader
 from sklearn.metrics import confusion_matrix
@@ -12,7 +12,6 @@ from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, re
 tf.enable_eager_execution()
 tf.set_random_seed(7)
 np.random.seed(7)
-
 
 
 # Trains the model for certains epochs on a dataset
@@ -30,7 +29,7 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
                 x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter)
                 x = preprocess(x, mode='imagenet')
                 y = y[:, :, :, :loader.n_classes]  # eliminate the ignore labels channel for computing the loss
-                [x, y, mask] = convert_to_tensors([x, y, mask]) 
+                [x, y, mask] = convert_to_tensors([x, y, mask])
 
                 y_ = model(x, training=True)
 
@@ -55,8 +54,11 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
 
 
 if __name__ == "__main__":
+    n_gpu = 0
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
+
     n_classes = 11
-    batch_size = 6
+    batch_size = 2
     epochs = 250
     width = 448
     height = 448
