@@ -1,10 +1,9 @@
 # Semantic Segmentation
 
 Things to do:
-Implement multiscale inferece
 Implement Dense Decoder Shortcut Connections for Single-Pass Semantic Segmentation
+add group convolutions? (see interesting links) just if the dense decoder shortcut have them
 Implement the auxialiary loss function
-Implement the DenseASPP
 
-Interesting links: 
+Interesting links:
 https://github.com/GeorgeSeif/Semantic-Segmentation-Suite

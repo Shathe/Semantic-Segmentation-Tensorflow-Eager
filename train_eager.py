@@ -2,11 +2,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 import os
-import nets.Network as ResnetFCN
+import nets.Network as Segception
 import Loader
-from sklearn.metrics import confusion_matrix
-import math
-from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, erase_ignore_pixels, compute_iou, get_metrics
+from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, \
+    get_metrics
 
 # enable eager mode
 tf.enable_eager_execution()
@@ -15,34 +14,37 @@ np.random.seed(7)
 
 
 # Trains the model for certains epochs on a dataset
-def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4):
-
+def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4, saver=None):
     training_samples = len(loader.image_train_list)
     steps_per_epoch = (training_samples / batch_size) + 1
-    for epoch in xrange(epochs):
-        lr_decay(lr, init_lr, 1e-8, epoch, epochs-1)
-        print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()) )
+    best_miou = 0
+
+    for epoch in xrange(epochs):  # for each epoch
+        lr_decay(lr, init_lr, 1e-8, epoch, epochs - 1)  # compute the new lr
+        print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()))
 
         for step in xrange(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
                 x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter)
                 x = preprocess(x, mode='imagenet')
-                y = y[:, :, :, :loader.n_classes]  # eliminate the ignore labels channel for computing the loss
                 [x, y, mask] = convert_to_tensors([x, y, mask])
 
-                y_ = model(x, training=True)
+                y_ = model(x, training=True)  # get output of the model
 
-                loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)
+                loss = tf.losses.softmax_cross_entropy(y, y_, weights=mask)  # compute loss
                 if show_loss: print('Training loss: ' + str(loss.numpy()))
 
             # Gets gradients and applies them
             grads = g.gradient(loss, model.variables)
             optimizer.apply_gradients(zip(grads, model.variables))
 
-        train_acc, train_miou = get_metrics(loader, model, loader.n_classes,  train=True)
-        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=True, scales=[ 0.75, 1.5, 1, 2, 0.5])
-        test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False, scales=[1])
+        # get metrics
+        train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True)
+        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False,
+                                                                flip_inference=True, scales=[0.75, 1.5, 1, 2, 0.5])
+        test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
+                                          scales=[1])
 
         print('Train accuracy: ' + str(train_acc.numpy()))
         print('Train miou: ' + str(train_miou))
@@ -52,22 +54,31 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
         print('Test miou scaled: ' + str(test_miou_scaled_flp))
         print ''
 
+        # save model if bet
+        if test_miou > best_miou:
+            best_miou = test_miou
+            saver_model.save('weights/best')
+
+        loader.suffle_segmentation()  # sheffle trainign set
+
 
 if __name__ == "__main__":
+    # some parameters
     n_gpu = 0
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
-
     n_classes = 11
     batch_size = 2
     epochs = 250
     width = 448
     height = 448
     lr = 3e-4
+
     dataset_path = 'Datasets/camvid'
-    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation', width=width, height=height,median_frequency=0.0 )
+    loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation',
+                           width=width, height=height, median_frequency=0.0)
 
     # build model and optimizer
-    model = ResnetFCN.ResnetFCN(num_classes=n_classes)
+    model = Segception.Segception(num_classes=n_classes)
 
     # optimizer
     learning_rate = tfe.Variable(lr)
@@ -77,16 +88,13 @@ if __name__ == "__main__":
     init_model(model, input_shape=(batch_size, width, height, 3))
 
     # Init saver
-    saver_model = tfe.Saver(var_list=model.variables) # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
+    saver_model = tfe.Saver(
+        var_list=model.variables)  # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
 
     restore_state(saver_model, 'weights/last_saver')
 
     get_params(model)
 
-    train(loader=loader, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate, init_lr=lr)
+    train(loader=loader, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate,
+          init_lr=lr, saver=saver_model)
     saver_model.save('weights/last_saver')
-
-
-
-
-

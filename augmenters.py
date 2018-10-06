@@ -1,6 +1,4 @@
 from imgaug import augmenters as iaa
-import imgaug as ia
-import cv2
 import random
 
 
