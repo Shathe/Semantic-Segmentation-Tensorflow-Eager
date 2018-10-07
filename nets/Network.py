@@ -19,8 +19,8 @@ class Segception(tf.keras.Model):
 
 
         # Decoder
-        self.adap_encoder_0 = EncoderAdaption(filters=1024, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.decoder_conv_0 = FeatureGeneration(filters=1024, kernel_size=3, cardinality=32, bottleneck_factor=2)
+        self.adap_encoder_0 = EncoderAdaption(filters=768, kernel_size=3, cardinality=32, bottleneck_factor=2)
+        self.decoder_conv_0 = FeatureGeneration(filters=768, kernel_size=3, cardinality=32, bottleneck_factor=2)
         self.conv0 = Conv_BN(512, kernel_size=1)
         self.conv0_1 = Conv_BN(256, kernel_size=1)
         self.conv0_2 = Conv_BN(128, kernel_size=1)
@@ -106,6 +106,25 @@ class Conv_BN(tf.keras.Model):
         self.conv = conv(filters=filters, kernel_size=kernel_size, strides=strides)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
 
+    def call(self, inputs, training=None, activation=True):
+        x = self.conv(inputs)
+        x = self.bn(x, training=training)
+        if activation:
+            x = layers.LeakyReLU(alpha=0.3)(x)
+
+        return x
+
+class DepthwiseConv_BN(tf.keras.Model):
+    def __init__(self, filters, kernel_size, strides=1):
+        super(DepthwiseConv_BN, self).__init__()
+
+        self.filters = filters
+        self.kernel_size = kernel_size
+        self.strides = strides
+
+        self.conv = separableConv(filters=filters, kernel_size=kernel_size, strides=strides)
+        self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
+
     def call(self, inputs, training=None):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
@@ -172,10 +191,16 @@ def depthwiseConv(kernel_size, strides=1, depth_multiplier=1, dilation_rate=1, u
 
 
 
+# Depthwise convolution
+def separableConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=False):
+    return layers.SeparableConv2D(filters, kernel_size, strides=strides, padding='same', use_bias=use_bias,
+                                  depthwise_regularizer=regularizers.l2(l=0.0003), pointwise_regularizer=regularizers.l2(l=0.0003), dilation_rate=dilation_rate)
 
+
+ 
 
 class GroupConvoution(tf.keras.Model):
-    def __init__(self, filters, kernel_size, cardinality=32, strides=1):
+    def __init__(self, filters, kernel_size, cardinality=32, strides=1, dilation_rate=1):
         super(GroupConvoution, self).__init__()
         assert not filters % cardinality
 
@@ -183,11 +208,11 @@ class GroupConvoution(tf.keras.Model):
         self.kernel_size = kernel_size
         self.cardinality = cardinality
         self.strides = strides
-
+        self.dilation_rate = dilation_rate
         self.convs = []
         self.bns = []
         for c in range(cardinality):
-            self.convs = self.convs + [conv(filters=self.filters, kernel_size=self.kernel_size, strides=self.strides)]
+            self.convs = self.convs + [separableConv(filters=self.filters, kernel_size=self.kernel_size, strides=self.strides, dilation_rate=self.dilation_rate)]
             self.bns = self.bns + [layers.BatchNormalization(epsilon=1e-3, momentum=0.993)]
 
 
@@ -205,7 +230,7 @@ class GroupConvoution(tf.keras.Model):
 
 
 class ResNeXtBlock(tf.keras.Model):
-    def __init__(self, filters, kernel_size, cardinality=32, bottleneck_factor=2, strides=1):
+    def __init__(self, filters, kernel_size, cardinality=32, bottleneck_factor=2, strides=1, dilation_rate=1):
         super(ResNeXtBlock, self).__init__()
         assert not (filters // bottleneck_factor) % cardinality
 
@@ -216,14 +241,14 @@ class ResNeXtBlock(tf.keras.Model):
         self.reduce_filters = int(filters / bottleneck_factor)
 
         self.conv1 = Conv_BN(self.reduce_filters, kernel_size=1)
-        self.conv2 = GroupConvoution(self.reduce_filters, kernel_size=3, cardinality=cardinality)
+        self.conv2 = GroupConvoution(self.reduce_filters, kernel_size=kernel_size, cardinality=cardinality, dilation_rate=dilation_rate)
         self.conv3 = Conv_BN(self.filters, kernel_size=1)
 
     def call(self, inputs, training=None):
         x = self.conv1(inputs, training=training)
         x = self.conv2(x, training=training)
         x = self.conv3(x, training=training)
-        return x
+        return x + inputs
 
 
 class EncoderAdaption(tf.keras.Model):
@@ -235,24 +260,22 @@ class EncoderAdaption(tf.keras.Model):
         self.cardinality = cardinality
         self.strides = strides
 
-        self.conv1 = Conv_BN(filters, kernel_size=3)
+        self.conv1 = DepthwiseConv_BN(filters, kernel_size=3)
         self.conv2 = ResNeXtBlock(filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv3 = ResNeXtBlock(filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv4 = ResNeXtBlock(filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv5 = Conv_BN(filters, kernel_size=3)
+
 
     def call(self, inputs, training=None):
         x = self.conv1(inputs, training=training)
         x = self.conv2(x, training=training)
-        x = self.conv3(x, training=training)
-        x = self.conv4(x, training=training)
-        x = self.conv5(x, training=training)
+
         return x
 
 
 class FeatureGeneration(tf.keras.Model):
     def __init__(self, filters, kernel_size, cardinality=32, bottleneck_factor=2, strides=1):
         super(FeatureGeneration, self).__init__()
+        # hacer cosas en plan dilatadas, poolings y tal conectandose entre ellas
+
 
         self.filters = filters
         self.kernel_size = kernel_size
@@ -313,20 +336,3 @@ class FeatureGeneration(tf.keras.Model):
 
         return x
 
- 
-
-
-
-
-# This function is taken from the original tf repo.
-# It ensures that all layers have a channel number that is divisible by 8
-# It can be seen here:
-# https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
-def _make_divisible(v, divisor=8, min_value=None):
-    if min_value is None:
-        min_value = divisor
-    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
-    # Make sure that round down does not go down by more than 10%.
-    if new_v < 0.9 * v:
-        new_v += divisor
-    return new_v
