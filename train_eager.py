@@ -66,10 +66,10 @@ if __name__ == "__main__":
     n_gpu = 0
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
     n_classes = 11
-    batch_size = 2
-    epochs = 448
-    width = 448
-    height = 166
+    batch_size = 1
+    epochs = 250
+    width = 128
+    height = 128
     lr = 3e-4
 
     dataset_path = 'Datasets/camvid'
