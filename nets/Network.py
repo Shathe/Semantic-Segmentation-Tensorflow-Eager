@@ -7,90 +7,55 @@ class Segception(tf.keras.Model):
         super(Segception, self).__init__(**kwargs)
         base_model = tf.keras.applications.xception.Xception(include_top=False, weights='imagenet',
                                                              input_shape=input_shape, pooling='avg')
-        self.model_output = tf.keras.Model(inputs=base_model.input,
-                                           outputs=base_model.get_layer('block14_sepconv2_act').output)
+        output_1 = base_model.get_layer('block2_sepconv2_bn').output
+        output_2 = base_model.get_layer('block3_sepconv2_bn').output
+        output_3 = base_model.get_layer('block4_sepconv2_bn').output
+        output_4 = base_model.get_layer('block13_sepconv2_bn').output
+        output_5 = base_model.get_layer('block14_sepconv2_bn').output
+        outputs = [output_5, output_4, output_3, output_2, output_1]
 
-        self.blocks_up = []
+        self.model_output = tf.keras.Model(inputs=base_model.input, outputs=outputs)
+
 
         # Decoder
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=512, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=256, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
-        self.blocks_up.append(Upsampling())
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=256, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
-
-        self.blocks_up.append(Upsampling())
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=128, filters=192, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha))
-
-        self.blocks_up.append(Upsampling())
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=64, filters=192, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha))
-
-        self.blocks_up.append(Upsampling())
-
-        self.blocks_up.append(
-            MBConv_idskip(input_filters=32, filters=192, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha))
-
-        self.blocks_up.append(Upsampling())
-
+        self.decoder_conv_1 = MBConv_idskip(input_filters=512, filters=256, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha)
+        self.decoder_conv_2 = MBConv_idskip(input_filters=256, filters=128, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha)
+        self.decoder_conv_3 = MBConv_idskip(input_filters=128, filters=64, kernel_size=5, strides=1, filters_multiplier=3, alpha=alpha)
+        self.decoder_conv_4 = MBConv_idskip(input_filters=64, filters=32, kernel_size=3, strides=1, filters_multiplier=3, alpha=alpha)
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
+
     def call(self, inputs, training=None, mask=None):
-        out = self.model_output(inputs, training=training)
 
-        for block in self.blocks_up:
-            out = block(out, training=training)
+        outputs = self.model_output(inputs, training=training)
+        # add activations to the ourputs of the model
+        for i in xrange(len(outputs)):
+            outputs[i] = layers.LeakyReLU(alpha=0.3)(outputs[i])
 
-        out = self.conv_logits(out)
+
+
+        x = outputs[0]
+        x = Upsampling()(x, size_multiplier=2)
+        x = tf.concat([x, CopyShape()(outputs[1], x)], axis=-1)
+        x = self.decoder_conv_1(x, training=training)
+        x = Upsampling()(x, size_multiplier=2)
+        x = tf.concat([x, CopyShape()(outputs[2], x)],-1)
+        x = self.decoder_conv_2(x, training=training)
+        x = Upsampling()(x, size_multiplier=2)
+        x = tf.concat([x, CopyShape()(outputs[3], x)],-1)
+        x = self.decoder_conv_3(x, training=training)
+        x = Upsampling()(x, size_multiplier=2)
+        x = tf.concat([x, CopyShape()(outputs[4], x)],-1)
+        x = self.decoder_conv_4(x, training=training)
+        x = self.conv_logits(x)
+        x = Upsampling()(x, size_multiplier=2)
 
         '''
         You could return several outputs, even intermediate outputs
         '''
-        return out
+        return x
 
 
-class MBConv_idskip(tf.keras.Model):
-    def __init__(self, input_filters, filters, kernel_size, strides=1, filters_multiplier=1, alpha=1):
-        super(MBConv_idskip, self).__init__()
-
-        self.filters = filters
-        self.kernel_size = kernel_size
-        self.strides = strides
-        self.filters_multiplier = filters_multiplier
-        self.alpha = alpha
-
-        self.depthwise_conv_filters = _make_divisible(input_filters)
-        self.pointwise_conv_filters = _make_divisible(filters * alpha)
-
-        # conv1
-        self.conv_bn1 = Conv_BN(filters=self.depthwise_conv_filters * filters_multiplier, kernel_size=1, strides=1)
-
-        # depthwiseconv2
-        self.depthwise_conv = depthwiseConv(depth_multiplier=1, kernel_size=kernel_size, strides=strides)
-        self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
-        self.relu = layers.LeakyReLU(alpha=0.3)
-
-        # conv3
-        self.conv_bn2 = Conv_BN(filters=self.pointwise_conv_filters, kernel_size=1, strides=1)
-
-    def call(self, inputs, training=None):
-
-        x = self.conv_bn1(inputs, training=training)
-
-        x = self.depthwise_conv(x)
-        x = self.bn(x, training=training)
-        x = self.relu(x)
-
-        x = self.conv_bn2(x, training=training, activation=False)
-
-        # Residual/Identity connection if possible
-        if self.strides == 1 and x.shape[3] == inputs.shape[3]:
-            return layers.add([inputs, x])
-        else:
-            return x
 
 
 class Conv_BN(tf.keras.Model):
@@ -103,13 +68,12 @@ class Conv_BN(tf.keras.Model):
 
         self.conv = conv(filters=filters, kernel_size=kernel_size, strides=strides)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
-        self.relu = layers.LeakyReLU(alpha=0.3)
 
     def call(self, inputs, training=None, activation=True):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
         if activation:
-            x = self.relu(x)
+            x = layers.LeakyReLU(alpha=0.3)(x)
 
         return x
 
@@ -124,13 +88,12 @@ class Transpose_Conv_BN(tf.keras.Model):
 
         self.conv = transposeConv(filters=filters, kernel_size=kernel_size, strides=strides)
         self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
-        self.relu = layers.LeakyReLU(alpha=0.3)
 
     def call(self, inputs, training=None, activation=True):
         x = self.conv(inputs)
         x = self.bn(x, training=training)
         if activation:
-            x = self.relu(x)
+            x = layers.LeakyReLU(alpha=0.3)(x)
 
         return x
 
@@ -142,6 +105,15 @@ class Upsampling(tf.keras.Model):
     def call(self, inputs, training=None, size_multiplier=2):
         x = tf.image.resize_bilinear(inputs, [inputs.get_shape()[1].value * size_multiplier,
                                               inputs.get_shape()[2].value * size_multiplier], align_corners=True)
+        return x
+
+class CopyShape(tf.keras.Model):
+    def __init__(self):
+        super(CopyShape, self).__init__()
+
+    def call(self, inputs, input_to_copy, training=None):
+        x = tf.image.resize_bilinear(inputs, [input_to_copy.get_shape()[1].value,
+                                              input_to_copy.get_shape()[2].value], align_corners=True)
         return x
 
 
@@ -176,3 +148,43 @@ def _make_divisible(v, divisor=8, min_value=None):
     if new_v < 0.9 * v:
         new_v += divisor
     return new_v
+
+
+class MBConv_idskip(tf.keras.Model):
+    def __init__(self, input_filters, filters, kernel_size, strides=1, filters_multiplier=1, alpha=1):
+        super(MBConv_idskip, self).__init__()
+
+        self.filters = filters
+        self.kernel_size = kernel_size
+        self.strides = strides
+        self.filters_multiplier = filters_multiplier
+        self.alpha = alpha
+
+        self.depthwise_conv_filters = _make_divisible(input_filters)
+        self.pointwise_conv_filters = _make_divisible(filters * alpha)
+
+        # conv1
+        self.conv_bn1 = Conv_BN(filters=self.depthwise_conv_filters * filters_multiplier, kernel_size=1, strides=1)
+
+        # depthwiseconv2
+        self.depthwise_conv = depthwiseConv(depth_multiplier=1, kernel_size=kernel_size, strides=strides)
+        self.bn = layers.BatchNormalization(epsilon=1e-3, momentum=0.993)
+
+        # conv3
+        self.conv_bn2 = Conv_BN(filters=self.pointwise_conv_filters, kernel_size=1, strides=1)
+
+    def call(self, inputs, training=None):
+
+        x = self.conv_bn1(inputs, training=training)
+
+        x = self.depthwise_conv(x)
+        x = self.bn(x, training=training)
+        x = layers.LeakyReLU(alpha=0.3)(x)
+
+        x = self.conv_bn2(x, training=training, activation=False)
+
+        # Residual/Identity connection if possible
+        if self.strides == 1 and x.shape[3] == inputs.shape[3]:
+            return layers.add([inputs, x])
+        else:
+            return x

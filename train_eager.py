@@ -4,8 +4,7 @@ import tensorflow.contrib.eager as tfe
 import os
 import nets.Network as Segception
 import Loader
-from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, \
-    get_metrics
+from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, get_metrics
 
 # enable eager mode
 tf.enable_eager_execution()
@@ -68,9 +67,9 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
     n_classes = 11
     batch_size = 2
-    epochs = 250
+    epochs = 448
     width = 448
-    height = 448
+    height = 166
     lr = 3e-4
 
     dataset_path = 'Datasets/camvid'
