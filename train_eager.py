@@ -85,7 +85,7 @@ if __name__ == "__main__":
     saver_model = tfe.Saver(
         var_list=model.variables)  # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
 
-    restore_state(saver_model, 'weights/last_saver')
+    restore_state(saver_model, 'weights/best')
 
     get_params(model)
 
