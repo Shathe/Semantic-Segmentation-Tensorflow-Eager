@@ -21,7 +21,6 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
     for epoch in xrange(epochs):  # for each epoch
         lr_decay(lr, init_lr, 1e-8, epoch, epochs - 1)  # compute the new lr
         print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()))
-
         for step in xrange(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
@@ -40,17 +39,13 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
 
         # get metrics
         train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True)
-        test_acc_scaled_flp, test_miou_scaled_flp = get_metrics(loader, model, loader.n_classes, train=False,
-                                                                flip_inference=True, scales=[0.75, 1.5, 1, 2, 0.5])
         test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
                                           scales=[1])
 
         print('Train accuracy: ' + str(train_acc.numpy()))
         print('Train miou: ' + str(train_miou))
         print('Test accuracy: ' + str(test_acc.numpy()))
-        print('Test accuracy scaled: ' + str(test_acc_scaled_flp.numpy()))
         print('Test miou: ' + str(test_miou))
-        print('Test miou scaled: ' + str(test_miou_scaled_flp))
         print ''
 
         # save model if bet
@@ -68,8 +63,8 @@ if __name__ == "__main__":
     n_classes = 11
     batch_size = 1
     epochs = 250
-    width = 128
-    height = 128
+    width = 448
+    height = 448
     lr = 3e-4
 
     dataset_path = 'Datasets/camvid'

@@ -21,25 +21,30 @@ class Segception(tf.keras.Model):
         # Decoder
         self.adap_encoder_0 = EncoderAdaption(filters=768, kernel_size=3, cardinality=32, bottleneck_factor=2)
         self.decoder_conv_0 = FeatureGeneration(filters=768, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.conv0 = Conv_BN(512, kernel_size=1)
-        self.conv0_1 = Conv_BN(256, kernel_size=1)
-        self.conv0_2 = Conv_BN(128, kernel_size=1)
-        self.conv0_3 = Conv_BN(64, kernel_size=1)
-        self.adap_encoder_1 = EncoderAdaption(filters=512, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.decoder_conv_1 = FeatureGeneration(filters=512, kernel_size=3)
-        self.conv1 = Conv_BN(256, kernel_size=1)
-        self.conv1_1 = Conv_BN(128, kernel_size=1)
-        self.conv1_2 = Conv_BN(64, kernel_size=1)
-        self.adap_encoder_2 = EncoderAdaption(filters=256, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.decoder_conv_2 = FeatureGeneration(filters=256, kernel_size=3)
-        self.conv2 = Conv_BN(128, kernel_size=1)
-        self.conv2_1 = Conv_BN(64, kernel_size=1)
-        self.adap_encoder_3 = EncoderAdaption(filters=128, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.decoder_conv_3 = FeatureGeneration(filters=128, kernel_size=3)
-        self.conv3 = Conv_BN(64, kernel_size=1)
-        self.adap_encoder_4 = EncoderAdaption(filters=64, kernel_size=3, cardinality=32, bottleneck_factor=2)
-        self.decoder_conv_4 = FeatureGeneration(filters=64, kernel_size=3)
+        self.conv0_0 = Conv_BN(384, kernel_size=1)
+        self.conv0_1 = Conv_BN(192, kernel_size=1)
+        self.conv0_2 = Conv_BN(96, kernel_size=1)
+        self.conv0_3 = Conv_BN(48, kernel_size=1)
+        self.adap_encoder_1 = EncoderAdaption(filters=384, kernel_size=3, cardinality=32, bottleneck_factor=2)
+        self.decoder_conv_1 = FeatureGeneration(filters=384, kernel_size=3, cardinality=32, bottleneck_factor=2)
+        self.conv1_0 = Conv_BN(192, kernel_size=1)
+        self.conv1_1 = Conv_BN(96, kernel_size=1)
+        self.conv1_2 = Conv_BN(48, kernel_size=1)
+        self.adap_encoder_2 = EncoderAdaption(filters=192, kernel_size=3, cardinality=24, bottleneck_factor=2)
+        self.decoder_conv_2 = FeatureGeneration(filters=192, kernel_size=3, cardinality=24, bottleneck_factor=2)
+        self.conv2_0 = Conv_BN(96, kernel_size=1)
+        self.conv2_1 = Conv_BN(48, kernel_size=1)
+        self.conv3_0 = Conv_BN(48, kernel_size=1)
+        self.adap_encoder_3 = EncoderAdaption(filters=96, kernel_size=3, cardinality=24, bottleneck_factor=2)
+        self.decoder_conv_3 = FeatureGeneration(filters=96, kernel_size=3, cardinality=24, bottleneck_factor=2)
+        self.adap_encoder_4 = EncoderAdaption(filters=48, kernel_size=3, cardinality=12, bottleneck_factor=2)
+        self.decoder_conv_4 = FeatureGeneration(filters=48, kernel_size=3, cardinality=12, bottleneck_factor=2)
+        self.decoder_conv_5 = FeatureGeneration(filters=48, kernel_size=3, cardinality=12, bottleneck_factor=2)
+
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+
+        self.conv_aux = Conv_BN(48, kernel_size=1)
+        self.conv_logits_aux = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
 
     def call(self, inputs, training=None, mask=None):
@@ -56,41 +61,38 @@ class Segception(tf.keras.Model):
         enc_adap_2 = self.adap_encoder_2(outputs[2], training=training)
         enc_adap_3 = self.adap_encoder_3(outputs[3], training=training)
         enc_adap_4 = self.adap_encoder_4(outputs[4], training=training)
-
         features_0 = self.decoder_conv_0(enc_adap_0, training=training)
-        x = self.conv0(features_0, training=training)
-        x = upsampling(x, scale=2)
-        x = x + CopyShape()(enc_adap_1, x)
+        x = upsampling(features_0, scale=2)
 
-
-
+        x = self.conv0_0(x, training=training) + CopyShape()(enc_adap_1, x)
         features_1 = self.decoder_conv_1(x, training=training)
-        x = self.conv1(features_1, training=training)
-        x = upsampling(x, scale=2)
-        x = x + CopyShape()(enc_adap_2, x) + CopyShape()(self.conv0_1(features_0, training=training), x)
+        x = upsampling(features_1, scale=2)
 
-
-
+        x = self.conv1_0(x, training=training)  + CopyShape()(enc_adap_2, x) + CopyShape()(self.conv0_1(features_0, training=training), x)
         features_2 = self.decoder_conv_2(x, training=training)
-        x = self.conv2(features_2, training=training)
-        x = upsampling(x, scale=2)
-        x = x + CopyShape()(enc_adap_3, x) + CopyShape()(self.conv0_2(features_0, training=training), x) + CopyShape()(self.conv1_1(features_1, training=training), x)
+        x = upsampling(features_2, scale=2)
 
-
+        x = self.conv2_0(x, training=training) + CopyShape()(enc_adap_3, x) + CopyShape()(self.conv0_2(features_0, training=training), x) \
+            + CopyShape()(self.conv1_1(features_1, training=training), x)
         features_3 = self.decoder_conv_3(x, training=training)
-        x = self.conv3(features_3, training=training)
-        x = upsampling(x, scale=2)
-        x = x + CopyShape()(enc_adap_4, x) + CopyShape()(self.conv0_3(features_0, training=training), x) + CopyShape()(self.conv1_2(features_1, training=training), x) + CopyShape()(self.conv2_1(features_2, training=training), x)
+        x = upsampling(features_3, scale=2)
 
+        x = self.conv3_0(x, training=training)  + CopyShape()(enc_adap_4, x) + CopyShape()(self.conv0_3(features_0, training=training), x) \
+            + CopyShape()(self.conv1_2(features_1, training=training), x) + CopyShape()(self.conv2_1(features_2, training=training), x)
         features_4 = self.decoder_conv_4(x, training=training)
+        out = self.conv_logits(features_4)
 
-        x = self.conv_logits(features_4)
-        x = upsampling(x, scale=2)
+        features_5 = self.conv_aux(tf.concat([features_4, out], axis=-1), training=training)
+        features_5 = self.decoder_conv_5(features_5, training=training)
+        out_aux = self.conv_logits_aux(features_5)
+
+        out = out_aux + out
+        out = upsampling(out, scale=2)
 
         '''
         You could return several outputs, even intermediate outputs
         '''
-        return x
+        return out
 
 
 
@@ -232,7 +234,6 @@ class GroupConvoution(tf.keras.Model):
 class ResNeXtBlock(tf.keras.Model):
     def __init__(self, filters, kernel_size, cardinality=32, bottleneck_factor=2, strides=1, dilation_rate=1):
         super(ResNeXtBlock, self).__init__()
-        assert not (filters // bottleneck_factor) % cardinality
 
         self.filters = filters
         self.kernel_size = kernel_size
@@ -241,13 +242,15 @@ class ResNeXtBlock(tf.keras.Model):
         self.reduce_filters = int(filters / bottleneck_factor)
 
         self.conv1 = Conv_BN(self.reduce_filters, kernel_size=1)
-        self.conv2 = GroupConvoution(self.reduce_filters, kernel_size=kernel_size, cardinality=cardinality, dilation_rate=dilation_rate)
+        self.conv2 = DepthwiseConv_BN(self.reduce_filters, kernel_size=1)
+        #self.conv2 = GroupConvoution(self.reduce_filters, kernel_size=kernel_size, cardinality=cardinality, dilation_rate=dilation_rate)
         self.conv3 = Conv_BN(self.filters, kernel_size=1)
 
     def call(self, inputs, training=None):
         x = self.conv1(inputs, training=training)
         x = self.conv2(x, training=training)
         x = self.conv3(x, training=training)
+
         return x + inputs
 
 
@@ -261,13 +264,13 @@ class EncoderAdaption(tf.keras.Model):
         self.strides = strides
 
         self.conv1 = DepthwiseConv_BN(filters, kernel_size=3)
+
         self.conv2 = ResNeXtBlock(filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
 
 
     def call(self, inputs, training=None):
         x = self.conv1(inputs, training=training)
         x = self.conv2(x, training=training)
-
         return x
 
 
@@ -277,44 +280,53 @@ class FeatureGeneration(tf.keras.Model):
         # hacer cosas en plan dilatadas, poolings y tal conectandose entre ellas
 
 
-        self.filters = filters
+        self.filters = filters * 2
         self.kernel_size = kernel_size
         self.cardinality = cardinality
         self.strides = strides
-        self.filter_reduced = int(filters / 4)
+        self.filter_reduced = int(filters / 2)
 
 
-        self.conv = Conv_BN(self.filter_reduced, kernel_size=1)
+        self.conv0 = Conv_BN(self.filter_reduced, kernel_size=1)
 
         self.conv1 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=2)
         self.conv2 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=4)
         self.conv3 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=8)
         self.conv4 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=16)
 
-        self.conv5 = ResNeXtBlock(self.filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=1)
+        self.conv5 = ResNeXtBlock(filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=1)
 
+        self.conv6 = Conv_BN(self.filters, kernel_size=1)
 
+        self.conv7 = ResNeXtBlock(self.filters, kernel_size=5, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=1)
+        self.conv8 = ResNeXtBlock(self.filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=2)
+        self.conv9 = ResNeXtBlock(self.filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=1)
+
+        self.conv10 = Conv_BN(filters, kernel_size=1)
 
     def call(self, inputs, training=None):
 
-        x = self.conv(inputs, training=training)
+        x = self.conv0(inputs, training=training)
         x1 = self.conv1(x, training=training)
         x2 = self.conv2(x1, training=training)
         x3 = self.conv3(x2, training=training)
         x4 = self.conv4(x3, training=training)
-        x = tf.concat([x4, x3, x2, x1], axis=-1) + inputs
-        x = self.conv5(x, training=training)
+        x = tf.concat([x4, x3], axis=-1) + tf.concat([ x2, x1], axis=-1) + inputs
+        x5 = self.conv5(x, training=training)
 
 
-        '''
+        x_pool1 = tf.layers.average_pooling2d(x5, pool_size=3, strides=1, padding='same')
+        x_pool2 = tf.layers.average_pooling2d(x5, pool_size=6, strides=1, padding='same')
+        x_pool3 = tf.layers.average_pooling2d(x5, pool_size=12, strides=1, padding='same')
+        x_pool4 = tf.layers.average_pooling2d(x5, pool_size=24, strides=1, padding='same')
+        x_pool = x_pool1 + x_pool2 + x_pool3 + x_pool4
+        x_pool = self.conv6(x_pool, training=training)
 
-        x1 =  tf.layers.average_pooling2d(x1, pool_size=5, strides=1, padding='same')
-        x1 = self.block_1_conv2(x1, training=training)
 
-        x = tf.concat([x4, x3, x2, x1], axis=-1)
+        x = self.conv7(x_pool, training=training) + tf.concat([inputs, x5], axis=-1)
+        x = self.conv8(x, training=training)
+        x = self.conv9(x, training=training)
 
-        x = self.conv1(x, training=training)
-        '''
+        x = self.conv10(x, training=training)
 
         return x
-
