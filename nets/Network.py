@@ -281,58 +281,40 @@ class FeatureGeneration(tf.keras.Model):
         self.kernel_size = kernel_size
         self.cardinality = cardinality
         self.strides = strides
-        self.D_features = filters
-        self.O_features = filters
-        self.D_prime_features = int(filters / 4)
+        self.filter_reduced = int(filters / 4)
 
 
+        self.conv = Conv_BN(self.filter_reduced, kernel_size=1)
 
-        self.block_1_conv1 = Conv_BN(self.D_features, kernel_size=3)
-        self.block_1_conv2 = Conv_BN(self.D_prime_features, kernel_size=3)
-        self.block_2_conv1 = Conv_BN(self.D_features, kernel_size=3)
-        self.block_2_conv2 = Conv_BN(self.D_prime_features, kernel_size=3)
-        self.block_3_conv1 = Conv_BN(self.D_features, kernel_size=3)
-        self.block_3_conv2 = Conv_BN(self.D_prime_features, kernel_size=3)
-        self.block_4_conv1 = Conv_BN(self.D_features, kernel_size=3)
-        self.block_4_conv2 = Conv_BN(self.D_prime_features, kernel_size=3)
+        self.conv1 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=2)
+        self.conv2 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=4)
+        self.conv3 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=8)
+        self.conv4 = ResNeXtBlock(self.filter_reduced, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=16)
 
-        self.conv1 = Conv_BN(self.D_features, kernel_size=3)
-        self.conv2 = ResNeXtBlock(self.D_features, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv3 = ResNeXtBlock(self.D_features, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv4 = ResNeXtBlock(self.D_features, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv5 = ResNeXtBlock(self.D_features, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor)
-        self.conv6 = Conv_BN(self.O_features, kernel_size=3)
-
+        self.conv5 = ResNeXtBlock(self.filters, kernel_size=3, cardinality=cardinality, bottleneck_factor=bottleneck_factor, dilation_rate=1)
 
 
 
     def call(self, inputs, training=None):
 
-        x1 = self.block_1_conv1(inputs, training=training)
+        x = self.conv(inputs, training=training)
+        x1 = self.conv1(x, training=training)
+        x2 = self.conv2(x1, training=training)
+        x3 = self.conv3(x2, training=training)
+        x4 = self.conv4(x3, training=training)
+        x = tf.concat([x4, x3, x2, x1], axis=-1) + inputs
+        x = self.conv5(x, training=training)
+
+
+        '''
+
         x1 =  tf.layers.average_pooling2d(x1, pool_size=5, strides=1, padding='same')
         x1 = self.block_1_conv2(x1, training=training)
-
-        x2 = self.block_2_conv1(x1, training=training)
-        x2 =  tf.layers.average_pooling2d(x2, pool_size=5, strides=1, padding='same')
-        x2 = self.block_2_conv2(x2, training=training)
-
-        x3 = self.block_3_conv1(x2, training=training)
-        x3 =  tf.layers.average_pooling2d(x3, pool_size=5, strides=1, padding='same')
-        x3 = self.block_3_conv2(x3, training=training)
-
-        x4 = self.block_4_conv1(x3, training=training)
-        x4 =  tf.layers.average_pooling2d(x4, pool_size=5, strides=1, padding='same')
-        x4 = self.block_4_conv2(x4, training=training)
-
 
         x = tf.concat([x4, x3, x2, x1], axis=-1)
 
         x = self.conv1(x, training=training)
-        x = self.conv2(x, training=training)
-        x = self.conv3(x, training=training)
-        x = self.conv4(x, training=training)
-        x = self.conv5(x, training=training)
-        x = self.conv6(x, training=training)
+        '''
 
         return x
 
