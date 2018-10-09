@@ -18,10 +18,10 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
     steps_per_epoch = (training_samples / batch_size) + 1
     best_miou = 0
 
-    for epoch in xrange(epochs):  # for each epoch
+    for epoch in range(epochs):  # for each epoch
         lr_decay(lr, init_lr, 1e-8, epoch, epochs - 1)  # compute the new lr
         print('epoch: ' + str(epoch) + '. Learning rate: ' + str(lr.numpy()))
-        for step in xrange(steps_per_epoch):  # for every batch
+        for step in range(steps_per_epoch):  # for every batch
             with tf.GradientTape() as g:
                 # get batch
                 x, y, mask = loader.get_batch(size=batch_size, train=True, augmenter=augmenter)
@@ -46,7 +46,7 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
         print('Train miou: ' + str(train_miou))
         print('Test accuracy: ' + str(test_acc.numpy()))
         print('Test miou: ' + str(test_miou))
-        print ''
+        print('')
 
         # save model if bet
         if test_miou > best_miou:
@@ -63,8 +63,8 @@ if __name__ == "__main__":
     n_classes = 11
     batch_size = 1
     epochs = 250
-    width = 448
-    height = 448
+    width = 128
+    height = 128
     lr = 3e-4
 
     dataset_path = 'Datasets/camvid'
