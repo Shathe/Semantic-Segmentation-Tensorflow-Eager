@@ -51,7 +51,7 @@ def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=Fals
         # save model if bet
         if test_miou > best_miou:
             best_miou = test_miou
-            saver_model.save('weights/best')
+            saver_model.save('weights/best2')
 
         loader.suffle_segmentation()  # sheffle trainign set
 
@@ -61,18 +61,18 @@ if __name__ == "__main__":
     n_gpu = 0
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
     n_classes = 11
-    batch_size = 1
-    epochs = 250
-    width = 128
-    height = 128
-    lr = 3e-4
+    batch_size = 4
+    epochs = 200
+    width = 448
+    height = 448
+    lr = 2e-4
 
     dataset_path = 'Datasets/camvid'
     loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation',
                            width=width, height=height, median_frequency=0.0)
 
     # build model and optimizer
-    model = Segception.Segception(num_classes=n_classes)
+    model = Segception.Segception_small(num_classes=n_classes)
 
     # optimizer
     learning_rate = tfe.Variable(lr)
@@ -85,10 +85,10 @@ if __name__ == "__main__":
     saver_model = tfe.Saver(
         var_list=model.variables)  # can use also ckpt = tfe.Checkpoint((model=model, optimizer=optimizer,learning_rate=learning_rate, global_step=global_step)
 
-    restore_state(saver_model, 'weights/best')
+    restore_state(saver_model, 'weights/best2')
 
     get_params(model)
 
     train(loader=loader, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate,
           init_lr=lr, saver=saver_model)
-    saver_model.save('weights/last_saver')
+    saver_model.save('weights/last_saver2')

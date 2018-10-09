@@ -17,16 +17,16 @@ class Segception(tf.keras.Model):
         self.model_output = tf.keras.Model(inputs=base_model.input, outputs=outputs)
 
         # Decoder
-        self.adap_encoder_1 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_2 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_3 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_4 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_5 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_1 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_2 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_3 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_4 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_5 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
 
-        self.decoder_conv_1 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=2)
-        self.decoder_conv_2 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=2)
-        self.decoder_conv_3 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1)
-        self.decoder_conv_4 = FeatureGeneration(filters=32, kernel_size=3, dilation_rate=1)
+        self.decoder_conv_1 = FeatureGeneration(filters=512, kernel_size=3, dilation_rate=2)
+        self.decoder_conv_2 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=2)
+        self.decoder_conv_3 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=1)
+        self.decoder_conv_4 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1)
 
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
         self.conv_aux = Conv_BN(48, kernel_size=1)
@@ -43,10 +43,10 @@ class Segception(tf.keras.Model):
         x = upsampling(outputs[0], scale=2)
         x = self.adap_encoder_1(x, training=training)
         x += reshape_into(self.adap_encoder_2(outputs[1], training=training), x) #512
-        x = self.decoder_conv_1(x, training=training) #256
+        x = self.decoder_conv_1(x, training=training) #512
 
         x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)#256
+        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)#512
         x = self.decoder_conv_2(x, training=training) #256
 
         x = upsampling(x, scale=2)
@@ -60,6 +60,45 @@ class Segception(tf.keras.Model):
         out_aux = self.conv_logits_aux(x)
         x = self.conv_aux(tf.concat([x, out_aux], axis=-1), training=training)
         x = self.conv_logits(x) + out_aux
+        x = upsampling(x, scale=2)
+        return x
+
+
+class Segception_small(tf.keras.Model):
+    def __init__(self, num_classes, alpha=1, input_shape=(None, None, 3), **kwargs):
+        super(Segception_small, self).__init__(**kwargs)
+        base_model = tf.keras.applications.xception.Xception(include_top=False, weights='imagenet',
+                                                             input_shape=input_shape, pooling='avg')
+
+        output_5 = base_model.get_layer('block14_sepconv2_bn').output
+
+        self.model_output = tf.keras.Model(inputs=base_model.input, outputs=output_5)
+
+        # Decoder
+
+        self.decoder_conv_1 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
+        self.decoder_conv_2 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=2)
+        self.decoder_conv_3 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=2)
+        self.decoder_conv_4 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
+
+        self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+
+
+    def call(self, inputs, training=None, mask=None):
+
+        output = self.model_output(inputs, training=training)
+        # add activations to the ourputs of the model
+        output = layers.LeakyReLU(alpha=0.3)(output)
+        x = self.decoder_conv_1(output, training=training)  # 64
+        x = upsampling(x, scale=2)
+        x = self.decoder_conv_2(x, training=training)  # 64
+        x = upsampling(x, scale=2)
+        x = self.decoder_conv_3(x, training=training)  # 64
+        x = upsampling(x, scale=2)
+        x = self.decoder_conv_4(x, training=training)  # 64
+        x = upsampling(x, scale=2)
+
+        x = self.conv_logits(x)
         x = upsampling(x, scale=2)
         return x
 
@@ -159,24 +198,19 @@ class ShatheBlock(tf.keras.Model):
         self.kernel_size = kernel_size
         self.strides = strides
 
-        self.conv = DepthwiseConv_BN(self.filters*4, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv1 = DepthwiseConv_BN(self.filters*4, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv_down = Conv_BN(self.filters, kernel_size=1)
+        self.conv = DepthwiseConv_BN(self.filters*2, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.conv1 = DepthwiseConv_BN(self.filters*2, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.conv2 = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
 
-        self.conv2_down = Conv_BN(self.filters/2, kernel_size=1)
-        self.conv2_1 = DepthwiseConv_BN(self.filters/2, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv2_2 = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
 
     def call(self, inputs, training=None):
         x = self.conv(inputs, training=training)
         x = self.conv1(x, training=training)
-        x1 = self.conv_down(x, training=training)
+        x = self.conv2(x, training=training)
 
-        x = self.conv2_down(inputs + x1, training=training)
-        x = self.conv2_1(x, training=training)
-        x2 = self.conv2_2(x, training=training)
 
-        return x1 + x2 + inputs
+
+        return x + inputs
 
 
 class EncoderAdaption(tf.keras.Model):
