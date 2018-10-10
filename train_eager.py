@@ -3,7 +3,7 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 import os
 import nets.Network as Segception
-import Loader
+import utils.Loader as Loader
 from utils.utils import get_params, preprocess, lr_decay, convert_to_tensors, restore_state, init_model, get_metrics
 
 # enable eager mode
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     n_gpu = 0
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
     n_classes = 11
-    batch_size = 4
+    batch_size = 2
     epochs = 200
     width = 448
     height = 448
@@ -72,7 +72,7 @@ if __name__ == "__main__":
                            width=width, height=height, median_frequency=0.0)
 
     # build model and optimizer
-    model = Segception.Segception_small(num_classes=n_classes)
+    model = Segception.Segception(num_classes=n_classes)
 
     # optimizer
     learning_rate = tfe.Variable(lr)

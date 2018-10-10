@@ -17,36 +17,36 @@ class Segception(tf.keras.Model):
         self.model_output = tf.keras.Model(inputs=base_model.input, outputs=outputs)
 
         # Decoder
-        self.adap_encoder_1 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_2 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_3 = EncoderAdaption(filters=512, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_4 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_5 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_1 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_2 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_3 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_4 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_5 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
 
-        self.decoder_conv_1 = FeatureGeneration(filters=512, kernel_size=3, dilation_rate=2)
-        self.decoder_conv_2 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=2)
-        self.decoder_conv_3 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=1)
-        self.decoder_conv_4 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1)
+        self.decoder_conv_1 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=2, blocks=6)
+        self.decoder_conv_2 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=2, blocks=6)
+        self.decoder_conv_3 = FeatureGeneration(filters=64, kernel_size=5, dilation_rate=1, blocks=4)
+        self.decoder_conv_4 = FeatureGeneration(filters=32, kernel_size=3, dilation_rate=1, blocks=3)
+
 
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
-        self.conv_aux = Conv_BN(48, kernel_size=1)
-        self.conv_logits_aux = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+        self.conv_logits_refine = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
 
-    def call(self, inputs, training=None, mask=None):
+    def call(self, inputs, training=None, mask=None, refinement=6):
 
         outputs = self.model_output(inputs, training=training)
         # add activations to the ourputs of the model
         for i in range(len(outputs)):
             outputs[i] = layers.LeakyReLU(alpha=0.3)(outputs[i])
 
-        x = upsampling(outputs[0], scale=2)
-        x = self.adap_encoder_1(x, training=training)
+        x = self.adap_encoder_1(outputs[0], training=training)
+        x = upsampling(x, scale=2)
         x += reshape_into(self.adap_encoder_2(outputs[1], training=training), x) #512
-        x = self.decoder_conv_1(x, training=training) #512
+        x = self.decoder_conv_1(x, training=training) #256
 
         x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)#512
+        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)#256
         x = self.decoder_conv_2(x, training=training) #256
 
         x = upsampling(x, scale=2)
@@ -57,9 +57,13 @@ class Segception(tf.keras.Model):
         x += reshape_into(self.adap_encoder_5(outputs[4], training=training), x)  # 64
         x = self.decoder_conv_4(x, training=training)  # 64
 
-        out_aux = self.conv_logits_aux(x)
-        x = self.conv_aux(tf.concat([x, out_aux], axis=-1), training=training)
-        x = self.conv_logits(x) + out_aux
+        # inputs last features, output: final output with nor rfienemtn
+        x = self.conv_logits(x)
+
+        for i in xrange(refinement):
+            # input: result with no refinement, output: refined
+            x = self.conv_logits_refine(x)
+
         x = upsampling(x, scale=2)
         return x
 
@@ -191,25 +195,24 @@ def separableConv(filters, kernel_size, strides=1, dilation_rate=1, use_bias=Fal
 
 
 class ShatheBlock(tf.keras.Model):
-    def __init__(self, filters, kernel_size,  strides=1, dilation_rate=1):
+    def __init__(self, filters, kernel_size,  strides=1, dilation_rate=1, bottleneck=2):
         super(ShatheBlock, self).__init__()
 
-        self.filters = filters
+        self.filters = filters*bottleneck
         self.kernel_size = kernel_size
         self.strides = strides
 
-        self.conv = DepthwiseConv_BN(self.filters*2, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv1 = DepthwiseConv_BN(self.filters*2, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.conv = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.conv1 = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
         self.conv2 = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.conv3 = Conv_BN(filters, kernel_size=1)
 
 
     def call(self, inputs, training=None):
         x = self.conv(inputs, training=training)
         x = self.conv1(x, training=training)
         x = self.conv2(x, training=training)
-
-
-
+        x = self.conv3(x, training=training)
         return x + inputs
 
 
@@ -231,7 +234,7 @@ class EncoderAdaption(tf.keras.Model):
 
 
 class FeatureGeneration(tf.keras.Model):
-    def __init__(self, filters, kernel_size, dilation_rate=1, strides=1):
+    def __init__(self, filters, kernel_size, dilation_rate=1, strides=1, blocks=3):
         super(FeatureGeneration, self).__init__()
 
         self.filters = filters
@@ -240,19 +243,15 @@ class FeatureGeneration(tf.keras.Model):
 
 
         self.conv0 = Conv_BN(self.filters, kernel_size=1)
-        self.conv1 = ShatheBlock(filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv2 = ShatheBlock(filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv3 = ShatheBlock(filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv4 = ShatheBlock(filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
-        self.conv5 = Conv_BN(self.filters, kernel_size=1)
+        self.blocks = []
+        for n in xrange(blocks):
+            self.blocks = self.blocks + [ShatheBlock(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)]
+
 
     def call(self, inputs, training=None):
 
         x = self.conv0(inputs, training=training)
-        x = self.conv1(x, training=training)
-        x = self.conv2(x, training=training)
-        x = self.conv3(x, training=training)
-        x = self.conv4(x, training=training)
-        x = self.conv5(x, training=training)
+        for block in self.blocks:
+            x = block(x, training=training)
 
         return x
