@@ -1,4 +1,6 @@
 weights
+images_out
+
 ./*.pyc
 *.pyc
 # Byte-compiled / optimized / DLL files

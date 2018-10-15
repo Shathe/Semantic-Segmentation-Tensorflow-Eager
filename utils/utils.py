@@ -3,10 +3,12 @@ import tensorflow as tf
 import tensorflow.contrib.eager as tfe
 from sklearn.metrics import confusion_matrix
 import math
-
+import os
+import cv2
 
 # Prints the number of parameters of a model
 def get_params(model):
+    # Init models (variables and input shape)
     total_parameters = 0
     for variable in model.variables:
         # shape is an array of tf.Dimension
@@ -57,9 +59,41 @@ def erase_ignore_pixels(labels, predictions, mask):
 
     return labels, predictions
 
+# generate and write an image into the disk
+def generate_image(image_scores, output_dir, dataset, loader, train=False):
+    # Get image name
+    if train:
+        list = loader.image_train_list
+        index = loader.index_train
+    else:
+        list = loader.image_test_list
+        index = loader.index_test
+
+    dataset_name = dataset.split('/')
+    if dataset_name[-1] != '':
+        dataset_name = dataset_name[-1]
+    else:
+        dataset_name = dataset_name[-2]
+
+    # Get output dir name
+    out_dir = os.path.join(output_dir, dataset_name)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # write it
+    image = np.argmax(image_scores, 2)
+    name_split = list[index - 1].split('/')
+    name = name_split[-1].replace('.jpg', '.png').replace('.jpeg', '.png')
+    cv2.imwrite(os.path.join(out_dir, name), image)
+
 
 # get accuracy and miou from a model
-def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1]):
+def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False):
+    if train:
+        loader.index_train = 0
+    else:
+        loader.index_test = 0
+
     accuracy = tfe.metrics.Accuracy()
     conf_matrix = np.zeros((n_classes, n_classes))
     if train:
@@ -98,6 +132,10 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
                 y_scaled += y_flipped_score
 
             y_ += y_scaled
+
+        # generate images
+        if write_images:
+            generate_image(y_[0,:,:,:], 'images_out', loader.dataFolderPath, loader, train)
 
         # Rephape
         y = tf.reshape(y, [y.shape[1] * y.shape[2] * y.shape[0], y.shape[3]])
