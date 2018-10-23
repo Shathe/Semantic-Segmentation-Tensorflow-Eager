@@ -21,10 +21,13 @@ def get_params(model):
 
 # preprocess a batch of images
 def preprocess(x, mode='imagenet'):
-    if mode and 'imagenet' in mode:
-        return tf.keras.applications.xception.preprocess_input(x)
+    if mode:
+        if 'imagenet' in mode:
+            return tf.keras.applications.xception.preprocess_input(x)
+        elif 'normalize' in mode:
+            return  x.astype(np.float32) / 127.5 - 1
     else:
-        return x.astype(np.float32) / 127.5 - 1
+        return x
 
 # applies to a lerarning rate tensor (lr) a decay schedule, the polynomial decay
 def lr_decay(lr, init_learning_rate, end_learning_rate, epoch, total_epochs, power=0.9):
@@ -43,8 +46,8 @@ def restore_state(saver, checkpoint):
     try:
         saver.restore(checkpoint)
         print('Model loaded')
-    except Exception:
-        print('Model not loaded')
+    except Exception as e:
+        print('Model not loaded: ' + str(e))
 
 # inits a models (set input)
 def init_model(model, input_shape):
@@ -86,9 +89,41 @@ def generate_image(image_scores, output_dir, dataset, loader, train=False):
     name = name_split[-1].replace('.jpg', '.png').replace('.jpeg', '.png')
     cv2.imwrite(os.path.join(out_dir, name), image)
 
+def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], preprocess_mode=None):
+    x = preprocess(batch_images, mode=preprocess_mode)
+    [x] = convert_to_tensors([x])
+
+    # creates the variable to store the scores
+    y_ = convert_to_tensors([np.zeros((x.shape[0], x.shape[1], x.shape[2], n_classes), dtype=np.float32)])[0]
+
+    for scale in scales:
+        # scale the image
+        x_scaled = tf.image.resize_images(x, (x.shape[1].value * scale, x.shape[2].value * scale),
+                                          method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+        y_scaled = model(x_scaled, training=False)
+        #  rescale the output
+        y_scaled = tf.image.resize_images(y_scaled, (x.shape[1].value, x.shape[2]),
+                                          method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+        # get scores
+        y_scaled = tf.nn.softmax(y_scaled)
+
+        if flip_inference:
+            # calculates flipped scores
+            y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False))
+            # resize to rela scale
+            y_flipped_ = tf.image.resize_images(y_flipped_, (x.shape[1].value, x.shape[2]),
+                                                method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+            # get scores
+            y_flipped_score = tf.nn.softmax(y_flipped_)
+
+            y_scaled += y_flipped_score
+
+        y_ += y_scaled
+
+    return y_
 
 # get accuracy and miou from a model
-def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False):
+def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False, preprocess_mode=None):
     if train:
         loader.index_train = 0
     else:
@@ -103,35 +138,8 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
 
     for step in xrange(samples):  # for every batch
         x, y, mask = loader.get_batch(size=1, train=train, augmenter=False)
-        x = preprocess(x, mode='imagenet')
-        [x, y] = convert_to_tensors([x, y])
-
-        # creates the variable to store the scores
-        y_ = convert_to_tensors([np.zeros((x.shape[0], x.shape[1], x.shape[2], n_classes), dtype=np.float32)])[0]
-
-        for scale in scales:
-            # scale the image
-            x_scaled = tf.image.resize_images(x, (x.shape[1].value * scale, x.shape[2].value * scale),
-                                              method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-            y_scaled = model(x_scaled, training=False)
-            #  rescale the output
-            y_scaled = tf.image.resize_images(y_scaled, (x.shape[1].value, x.shape[2]),
-                                              method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-            # get scores
-            y_scaled = tf.nn.softmax(y_scaled)
-
-            if flip_inference:
-                # calculates flipped scores
-                y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False))
-                # resize to rela scale
-                y_flipped_ = tf.image.resize_images(y_flipped_, (x.shape[1].value, x.shape[2]),
-                                                    method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-                # get scores
-                y_flipped_score = tf.nn.softmax(y_flipped_)
-
-                y_scaled += y_flipped_score
-
-            y_ += y_scaled
+        [y] = convert_to_tensors([y])
+        y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode)
 
         # generate images
         if write_images:
