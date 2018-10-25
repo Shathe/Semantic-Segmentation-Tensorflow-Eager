@@ -2,7 +2,7 @@ from __future__ import print_function
 import os
 import numpy as np
 import tensorflow as tf
-from keras.utils.np_utils import to_categorical
+from tensorflow.keras.utils import to_categorical
 import glob
 import cv2
 from augmenters import get_augmenter

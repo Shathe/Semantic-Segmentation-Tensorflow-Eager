@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.utils import to_categorical
 import glob
 np.random.seed(7)
 tf.set_random_seed(7)

@@ -13,7 +13,7 @@ np.random.seed(7)
 
 
 # Trains the model for certains epochs on a dataset
-def train(loader, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4,
+def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, augmenter=False, lr=None, init_lr=2e-4,
           saver=None, variables_to_optimize=None, evaluation=True, name_best_model = 'weights/best', preprocess_mode=None):
     training_samples = len(loader.image_train_list)
     steps_per_epoch = (training_samples / batch_size) + 1
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     restore_state(restore_model, name_best_model)
     get_params(model)
 
-    train(loader=loader, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate,
+    train(loader=loader, optimizer=optimizer, model=model, epochs=epochs, batch_size=batch_size, augmenter='segmentation', lr=learning_rate,
           init_lr=lr, saver=saver_model, variables_to_optimize=variables_to_optimize, name_best_model=name_best_model,
           evaluation=True, preprocess_mode=preprocess_mode)
 
