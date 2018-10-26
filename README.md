@@ -2,9 +2,13 @@
 
 ## Requirement
 * Python 2.7+
-* Tensorflow-gpu 1.10
-* opencv
-* imgaug
+* Tensorflow-gpu
+* OpenCv
+* H5py
+* Scikit-learn
+* Numpy
+* Imgaug
+
 
 ## Train with eager execution
 Train a semantic segmentation model on the Camvid dataset! just execute:
