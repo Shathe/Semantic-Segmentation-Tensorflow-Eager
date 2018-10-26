@@ -68,16 +68,16 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
 
 
-    n_classes = 8
+    n_classes = 11
     batch_size = 2
     epochs = 150
-    width = 346
-    height = 260
-    channels = 1
+    width = 448
+    height = 448
+    channels = 3
     lr = 1.5e-4
     name_best_model = 'weights/camvid/best'
     dataset_path = 'Datasets/camvid'
-    preprocess_mode = None  #possible values 'imagenet', 'normalize',None
+    preprocess_mode = 'imagenet'  #possible values 'imagenet', 'normalize',None
 
     loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation',
                            width=width, height=height, channels=channels, median_frequency=0.0)
