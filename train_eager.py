@@ -45,12 +45,12 @@ def train(loader, optimizer, model, epochs=5, batch_size=2, show_loss=False, aug
 
         if evaluation:
             # get metrics
-            #train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode)
+            train_acc, train_miou = get_metrics(loader, model, loader.n_classes, train=True, preprocess_mode=preprocess_mode)
             test_acc, test_miou = get_metrics(loader, model, loader.n_classes, train=False, flip_inference=False,
                                               scales=[1], preprocess_mode=preprocess_mode)
 
-            #print('Train accuracy: ' + str(train_acc.numpy()))
-            #print('Train miou: ' + str(train_miou))
+            print('Train accuracy: ' + str(train_acc.numpy()))
+            print('Train miou: ' + str(train_miou))
             print('Test accuracy: ' + str(test_acc.numpy()))
             print('Test miou: ' + str(test_miou))
             print('')
@@ -71,15 +71,15 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(n_gpu)
 
 
-    n_classes = 19
-    batch_size = 2
-    epochs = 60
-    width = 1024 #448
-    height = 512 #384
+    n_classes = 11
+    batch_size = 4
+    epochs = 150
+    width = 448
+    height = 448
     channels = 3
-    lr = 5e-5
-    name_best_model = 'weights/city'
-    dataset_path = '/media/msrobot/discoGordo/citiscapes/city'
+    lr = 1.5e-4
+    name_best_model = 'weights/camvid/best'
+    dataset_path = 'Datasets/camvid'
     preprocess_mode = 'imagenet'  #possible values 'imagenet', 'normalize',None
 
     loader = Loader.Loader(dataFolderPath=dataset_path, n_classes=n_classes, problemType='segmentation',
