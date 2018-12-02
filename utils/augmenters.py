@@ -57,9 +57,9 @@ def get_augmenter(name, c_val=255, vertical_flip=True):
             value_Multiply = random.uniform(0.95, 1.10)
             #value_GaussianBlur = random.uniform(0.0,0.05)
             ContrastNormalization = random.uniform(0.90, 1.20)
-            scale = random.uniform(0.50, 2)
-            value_x2 = random.uniform(-0.20, 0.20)
-            value_y2 = random.uniform(-0.20, 0.20)
+            scale = random.uniform(0.60, 1.8)
+            value_x2 = random.uniform(-0.25, 0.25)
+            value_y2 = random.uniform(-0.25, 0.25)
             val_rotate = random.uniform(-10,10)
 
         

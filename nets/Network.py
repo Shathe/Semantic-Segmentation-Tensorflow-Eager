@@ -1,5 +1,8 @@
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers
+
+
+
 class Segception(tf.keras.Model):
     def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
         super(Segception, self).__init__(**kwargs)
@@ -21,71 +24,9 @@ class Segception(tf.keras.Model):
         self.adap_encoder_4 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
         self.adap_encoder_5 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
 
-        self.decoder_conv_1 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=2, blocks=5)
-        self.decoder_conv_2 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=2, blocks=5)
-        self.decoder_conv_3 = FeatureGeneration(filters=64, kernel_size=5, dilation_rate=1, blocks=4)
-        self.decoder_conv_4 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1, blocks=2)
-        self.aspp = ASPP(filters=64, kernel_size=3)
-
-        self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
-
-
-    def call(self, inputs, training=None, mask=None):
-
-        outputs = self.model_output(inputs, training=training)
-        # add activations to the ourputs of the model
-        for i in range(len(outputs)):
-            outputs[i] = layers.LeakyReLU(alpha=0.3)(outputs[i])
-
-        x = self.adap_encoder_1(outputs[0], training=training)
-        x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_2(outputs[1], training=training), x) #512
-        x = self.decoder_conv_1(x, training=training) #256
-
-        x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)#256
-        x = self.decoder_conv_2(x, training=training) #256
-
-        x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_4(outputs[3], training=training), x)#128
-        x = self.decoder_conv_3(x, training=training) #128
-        x_aspp = self.aspp(x, training=training, operation='sum') #128
-        x += x_aspp
-
-        x = upsampling(x, scale=2)
-        x += reshape_into(self.adap_encoder_5(outputs[4], training=training), x)  # 64
-        x = self.decoder_conv_4(x, training=training)  # 64
-        x = upsampling(x, scale=2)
-
-        x = self.conv_logits(x)
-
-        return x
-
-
-class Segception_v2(tf.keras.Model):
-    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
-        super(Segception_v2, self).__init__(**kwargs)
-        base_model = tf.keras.applications.xception.Xception(include_top=False, weights=weights,
-                                                             input_shape=input_shape, pooling='avg')
-        output_1 = base_model.get_layer('block2_sepconv2_bn').output
-        output_2 = base_model.get_layer('block3_sepconv2_bn').output
-        output_3 = base_model.get_layer('block4_sepconv2_bn').output
-        output_4 = base_model.get_layer('block13_sepconv2_bn').output
-        output_5 = base_model.get_layer('block14_sepconv2_bn').output
-        outputs = [output_5, output_4, output_3, output_2, output_1]
-
-        self.model_output = tf.keras.Model(inputs=base_model.input, outputs=outputs)
-
-        # Decoder
-        self.adap_encoder_1 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_2 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_3 = EncoderAdaption(filters=256, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_4 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
-        self.adap_encoder_5 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
-
         self.decoder_conv_1 = FeatureGeneration(filters=256, kernel_size=3, dilation_rate=1, blocks=5)
         self.decoder_conv_2 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=1, blocks=5)
-        self.decoder_conv_3 = FeatureGeneration(filters=64, kernel_size=5, dilation_rate=1, blocks=4)
+        self.decoder_conv_3 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1, blocks=5)
         self.decoder_conv_4 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1, blocks=2)
         self.aspp = ASPP_2(filters=64, kernel_size=3)
 
@@ -131,32 +72,196 @@ class Segception_v2(tf.keras.Model):
 
 
 
-class RefineNet(tf.keras.Model):
-    def __init__(self, num_classes, base_model, **kwargs):
-        super(RefineNet, self).__init__(**kwargs)
-        # mirar si cabe en memoria RefineNet
-        # usar esta pero con restore self.model_output.variables y el call es con rgb y segmentacion
-        # poner que justo esas a no optimizar, solo las nuevas
-        self.base_model = base_model
+class Efficient(tf.keras.Model):
+    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
+        super(Efficient, self).__init__(**kwargs)#1024x512
+        filters = 24
+        self.conv1 = Conv_BN(filters=filters, kernel_size=3, strides=2) # 512x256
+        self.conv2 = DepthwiseConv_BN(filters*3, kernel_size=3, dilation_rate=1, strides=2)#256x128
 
-        # Decoder
-        self.conv = FeatureGeneration(filters=32, kernel_size=3, dilation_rate=1, blocks=1)
+        self.block1 = EfficientBlock(filters*3, 3, dilation_rate=1, blocks=2)
+
+        self.block1_dilated1 = EfficientBlock(filters*3, 3, dilation_rate=2, blocks=7)
+        self.block1_dilated2 = EfficientBlock(filters*3, 3, dilation_rate=4, blocks=5)
+        self.block1_dilated3 = EfficientBlock(filters*3, 3, dilation_rate=8, blocks=3)
+        self.block1_dilated4 = EfficientBlock(filters*3, 3, dilation_rate=16, blocks=1)
+        self.conv6 = DepthwiseConv_BN(filters*6, kernel_size=3, dilation_rate=1, strides=1)
+
+        self.conv4 = DepthwiseConv_BN(filters*6, kernel_size=3, dilation_rate=1, strides=2)
+
+        self.block1_dilated55 = EfficientBlock(filters*6, 3, dilation_rate=16, blocks=1)
+        self.block1_dilated5 = EfficientBlock(filters*6, 3, dilation_rate=8, blocks=3)
+        self.block1_dilated6 = EfficientBlock(filters*6, 3, dilation_rate=4, blocks=5)
+        self.block1_dilated7 = EfficientBlock(filters*6, 3, dilation_rate=2, blocks=7)
+
+        self.conv5 = DepthwiseConv_BN(filters*3, kernel_size=3, dilation_rate=1, strides=1)
+        self.block2 = EfficientBlock(filters*3, 3, dilation_rate=1, blocks=5)
+
+
         self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
 
-    def call(self, inputs, training=None, mask=None, iterations=1):
-        # get non refined segmentation
-        segmentation = self.base_model(inputs, training=training)
 
-        for i in xrange(iterations):
-            x = tf.concat([inputs, segmentation], -1)
-            x = self.conv(x, training=training)
-            segmentation = self.conv_logits(x)
+    def call(self, inputs, training=None, mask=None, aux_loss=False):
+        x = self.conv1(inputs, training=training)
+        x = self.conv2(x, training=training)
 
-        return segmentation
+        #x = self.conv3(x_, training=training)
+
+        x_block = self.block1(x, training=training)
+        x_dil = self.block1_dilated1(x_block, training=training)
+        x_dil = self.block1_dilated2(x_dil, training=training)
+        x_dil = self.block1_dilated3(x_dil, training=training)
+        x_dil_ = self.block1_dilated4(x_dil, training=training)
+
+        x_dil = self.conv4(x_dil_, training=training)
+
+
+        x_dil = self.block1_dilated55(x_dil, training=training)
+        x_dil = self.block1_dilated5(x_dil, training=training)
+        x_dil = self.block1_dilated6(x_dil, training=training)
+        x_dil = self.block1_dilated7(x_dil, training=training)
+
+        x = upsampling(x_dil, scale=4) + upsampling(self.conv6(x_dil_, training=training), scale=2)
+        x = self.conv5(x, training=training)
+        x = self.block2(x, training=training)
+
+        x = upsampling(x, scale=2)
+        x = self.conv_logits(x)
+        if aux_loss:
+            return x, x
+        else:
+            return x
+
+
+
+
+class Segception_small(tf.keras.Model):
+    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
+        super(Segception_small, self).__init__(**kwargs)
+        base_model = tf.keras.applications.xception.Xception(include_top=False, weights=weights,
+                                                             input_shape=input_shape, pooling='avg')
+        output_1 = base_model.get_layer('block2_sepconv2_bn').output
+        output_2 = base_model.get_layer('block3_sepconv2_bn').output
+        output_3 = base_model.get_layer('block4_sepconv2_bn').output
+        output_4 = base_model.get_layer('block13_sepconv2_bn').output
+        output_5 = base_model.get_layer('block14_sepconv2_bn').output
+        outputs = [output_5, output_4, output_3, output_2, output_1]
+
+        self.model_output = tf.keras.Model(inputs=base_model.input, outputs=outputs)
+
+        # Decoder
+        self.adap_encoder_1 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_2 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_3 = EncoderAdaption(filters=128, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_4 = EncoderAdaption(filters=64, kernel_size=3, dilation_rate=1)
+        self.adap_encoder_5 = EncoderAdaption(filters=32, kernel_size=3, dilation_rate=1)
+
+        self.decoder_conv_1 = FeatureGeneration(filters=128, kernel_size=3, dilation_rate=1, blocks=3)
+        self.decoder_conv_2 = FeatureGeneration(filters=64, kernel_size=3, dilation_rate=1, blocks=3)
+        self.decoder_conv_3 = FeatureGeneration(filters=32, kernel_size=3, dilation_rate=1, blocks=3)
+        self.decoder_conv_4 = FeatureGeneration(filters=32, kernel_size=3, dilation_rate=1, blocks=1)
+        self.aspp = ASPP_2(filters=32, kernel_size=3)
+
+        self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+
+    def call(self, inputs, training=None, mask=None, aux_loss=False):
+
+        outputs = self.model_output(inputs, training=training)
+        # add activations to the ourputs of the model
+        for i in range(len(outputs)):
+            outputs[i] = layers.LeakyReLU(alpha=0.3)(outputs[i])
+
+        x = self.adap_encoder_1(outputs[0], training=training)
+        x = upsampling(x, scale=2)
+        x += reshape_into(self.adap_encoder_2(outputs[1], training=training), x)  # 512
+        x = self.decoder_conv_1(x, training=training)  # 256
+
+        x = upsampling(x, scale=2)
+        x += reshape_into(self.adap_encoder_3(outputs[2], training=training), x)  # 256
+        x = self.decoder_conv_2(x, training=training)  # 256
+
+        x = upsampling(x, scale=2)
+        x += reshape_into(self.adap_encoder_4(outputs[3], training=training), x)  # 128
+        x = self.decoder_conv_3(x, training=training)  # 128
+
+        x = self.aspp(x, training=training, operation='sum')  # 128
+
+        x = upsampling(x, scale=2)
+        x += reshape_into(self.adap_encoder_5(outputs[4], training=training), x)  # 64
+        x = self.decoder_conv_4(x, training=training)  # 64
+        x = self.conv_logits(x)
+        x = upsampling(x, scale=2)
+
+        if aux_loss:
+            return x, x
+        else:
+            return x
+
+
+class Dilated_net(tf.keras.Model):
+    def __init__(self, num_classes, input_shape=(None, None, 3), weights='imagenet', **kwargs):
+        super(Dilated_net, self).__init__(**kwargs)
+        base_filter = 64
+        self.conv1 = Conv_BN(filters=base_filter, kernel_size=3, strides=2)
+        self.encoder_conv_1 = FeatureGeneration(filters=base_filter, kernel_size=3, dilation_rate=1, blocks=2)
+        self.downsample_1 = DepthwiseConv_BN(filters=base_filter, kernel_size=3, strides=2)
+        self.encoder_conv_2 = FeatureGeneration(filters=base_filter*2, kernel_size=3, dilation_rate=1, blocks=4)
+        self.downsample_2 = DepthwiseConv_BN(filters=base_filter*2, kernel_size=3, strides=2)
+        self.encoder_conv_3 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=1, blocks=5)
+        self.encoder_conv_4 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=2, blocks=4)
+        self.encoder_conv_5 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=4, blocks=3)
+        self.encoder_conv_6 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=8, blocks=2)
+        self.encoder_conv_7 = FeatureGeneration(filters=base_filter*4, kernel_size=3, dilation_rate=16, blocks=1)
+
+        self.adap_encoder_1 = EncoderAdaption(filters=base_filter*2, kernel_size=3, dilation_rate=1)
+
+
+        #DepthwiseConv_BN
+        self.decoder_conv_1 = FeatureGeneration(filters=base_filter*2, kernel_size=3, dilation_rate=1, blocks=6)
+        self.decoder_conv_2 = FeatureGeneration(filters=base_filter, kernel_size=3, dilation_rate=1, blocks=3)
+        self.aspp = ASPP_2(filters=base_filter*2, kernel_size=3)
+
+        self.conv_logits = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+        self.conv_logits_aux = conv(filters=num_classes, kernel_size=1, strides=1, use_bias=True)
+
+    def call(self, inputs, training=None, mask=None, aux_loss=False):
+
+        x = self.conv1(inputs, training=training)
+        x = self.encoder_conv_1(x, training=training)
+        x_enc = self.downsample_1(x, training=training)
+        x = self.encoder_conv_2(x_enc, training=training)
+        x = self.downsample_2(x, training=training)
+        x1 = self.encoder_conv_3(x, training=training)
+        x = x1 + self.encoder_conv_4(x1, training=training)
+        x += self.encoder_conv_5(x + x1, training=training)
+        x += self.encoder_conv_6(x + x1, training=training)
+        x += self.encoder_conv_7(x + x1, training=training)
+        x = upsampling(x + x1, scale=2)
+        x = self.decoder_conv_1(x, training=training)
+
+        x += self.adap_encoder_1(x_enc, training=training)
+
+        x = self.aspp(x, training=training, operation='sum')  # 128
+        x_aux = self.conv_logits_aux(x)
+        x_aux = upsampling(x_aux, scale=2)
+        x_aux_out = upsampling(x_aux, scale=2)
+
+        x = upsampling(x, scale=2)
+        x = self.decoder_conv_2(tf.concat((x, x_aux), -1), training=training)  # 64
+        x = self.conv_logits(tf.concat((x, x_aux), -1))
+        x = upsampling(x, scale=2)
+
+        if aux_loss:
+            return x, x_aux_out
+        else:
+            return x
+
+
 
 
 
 def upsampling(inputs, scale):
+
     return tf.image.resize_bilinear(inputs, size=[tf.shape(inputs)[1] * scale, tf.shape(inputs)[2] * scale],
                                     align_corners=True)
 
@@ -250,13 +355,37 @@ class Transpose_Conv_BN(tf.keras.Model):
         return x
 
 
+class EfficientBlock(tf.keras.Model):
+    def __init__(self, filters, kernel_size, dilation_rate=1,  blocks=3):
+        super(EfficientBlock, self).__init__()
+
+        self.filters = filters
+        self.kernel_size = kernel_size
+
+        self.first_conv = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
+        self.blocks = []
+        for n in xrange(blocks - 1):
+            self.blocks = self.blocks + [
+                DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)]
+
+    def call(self, inputs, training=None):
+
+        x = self.first_conv(inputs, training=training)
+
+        for block in self.blocks:
+            x = block(x, training=training)
+
+        return x + inputs
+
+
+
+
 class ShatheBlock(tf.keras.Model):
-    def __init__(self, filters, kernel_size, strides=1, dilation_rate=1, bottleneck=2):
+    def __init__(self, filters, kernel_size,  dilation_rate=1, bottleneck=2):
         super(ShatheBlock, self).__init__()
 
         self.filters = filters * bottleneck
         self.kernel_size = kernel_size
-        self.strides = strides
 
         self.conv = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
         self.conv1 = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
@@ -272,13 +401,12 @@ class ShatheBlock(tf.keras.Model):
 
 
 class ShatheBlock_MultiDil(tf.keras.Model):
-    def __init__(self, filters, kernel_size, strides=1, dilation_rate=1, bottleneck=2):
+    def __init__(self, filters, kernel_size, dilation_rate=1, bottleneck=2):
         super(ShatheBlock_MultiDil, self).__init__()
 
         self.filters = filters * bottleneck
         self.filters_dil = filters / 2
         self.kernel_size = kernel_size
-        self.strides = strides
 
         self.conv = DepthwiseConv_BN(self.filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
         self.conv1 = DepthwiseConv_BN(self.filters_dil, kernel_size=kernel_size, dilation_rate=dilation_rate*8)
@@ -360,6 +488,7 @@ class ASPP_2(tf.keras.Model):
 
 
 
+
 class DPC(tf.keras.Model):
     def __init__(self, filters):
         super(DPC, self).__init__()
@@ -385,12 +514,11 @@ class DPC(tf.keras.Model):
 
 
 class EncoderAdaption(tf.keras.Model):
-    def __init__(self, filters, kernel_size, dilation_rate=1, strides=1):
+    def __init__(self, filters, kernel_size, dilation_rate=1):
         super(EncoderAdaption, self).__init__()
 
         self.filters = filters
         self.kernel_size = kernel_size
-        self.strides = strides
 
         self.conv1 = Conv_BN(filters, kernel_size=1)
         self.conv2 = ShatheBlock(filters, kernel_size=kernel_size, dilation_rate=dilation_rate)
@@ -402,12 +530,11 @@ class EncoderAdaption(tf.keras.Model):
 
 
 class FeatureGeneration(tf.keras.Model):
-    def __init__(self, filters, kernel_size, dilation_rate=1, strides=1, blocks=3):
+    def __init__(self, filters, kernel_size, dilation_rate=1,  blocks=3):
         super(FeatureGeneration, self).__init__()
 
         self.filters = filters
         self.kernel_size = kernel_size
-        self.strides = strides
 
         self.conv0 = Conv_BN(self.filters, kernel_size=1)
         self.blocks = []
@@ -426,13 +553,14 @@ class FeatureGeneration(tf.keras.Model):
 
 
 
+
+
 class FeatureGeneration_Dil(tf.keras.Model):
-    def __init__(self, filters, kernel_size, dilation_rate=1, strides=1, blocks=3):
+    def __init__(self, filters, kernel_size, dilation_rate=1,  blocks=3):
         super(FeatureGeneration_Dil, self).__init__()
 
         self.filters = filters
         self.kernel_size = kernel_size
-        self.strides = strides
 
         self.conv0 = Conv_BN(self.filters, kernel_size=1)
         self.blocks = []

@@ -5,6 +5,7 @@ from sklearn.metrics import confusion_matrix
 import math
 import os
 import cv2
+import time
 
 # Prints the number of parameters of a model
 def get_params(model):
@@ -89,7 +90,7 @@ def generate_image(image_scores, output_dir, dataset, loader, train=False):
     name = name_split[-1].replace('.jpg', '.png').replace('.jpeg', '.png')
     cv2.imwrite(os.path.join(out_dir, name), image)
 
-def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], preprocess_mode=None):
+def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], preprocess_mode=None, time_exect=False):
     x = preprocess(batch_images, mode=preprocess_mode)
     [x] = convert_to_tensors([x])
 
@@ -100,7 +101,12 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
         # scale the image
         x_scaled = tf.image.resize_images(x, (x.shape[1].value * scale, x.shape[2].value * scale),
                                           method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-        y_scaled = model(x_scaled, training=False)
+
+        pre = time.time()
+        y_scaled = model(x_scaled, training=False, aux_loss=False)
+        if time_exect and scale == 1:
+            print("seconds to inference: " + str((time.time()-pre)*1000))  + " ms"
+
         #  rescale the output
         y_scaled = tf.image.resize_images(y_scaled, (x.shape[1].value, x.shape[2]),
                                           method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
@@ -109,7 +115,7 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
 
         if flip_inference:
             # calculates flipped scores
-            y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False))
+            y_flipped_ = tf.image.flip_left_right(model(tf.image.flip_left_right(x_scaled), training=False, aux_loss=False))
             # resize to rela scale
             y_flipped_ = tf.image.resize_images(y_flipped_, (x.shape[1].value, x.shape[2]),
                                                 method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
@@ -123,7 +129,7 @@ def inference(model, batch_images, n_classes, flip_inference=True, scales=[1], p
     return y_
 
 # get accuracy and miou from a model
-def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False, preprocess_mode=None):
+def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scales=[1], write_images=False, preprocess_mode=None, time_exect=False):
     if train:
         loader.index_train = 0
     else:
@@ -139,8 +145,7 @@ def get_metrics(loader, model, n_classes, train=True, flip_inference=False, scal
     for step in xrange(samples):  # for every batch
         x, y, mask = loader.get_batch(size=1, train=train, augmenter=False)
         [y] = convert_to_tensors([y])
-        y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode)
-
+        y_ = inference(model, x, n_classes, flip_inference, scales, preprocess_mode=preprocess_mode, time_exect=time_exect)
         # generate images
         if write_images:
             generate_image(y_[0,:,:,:], 'images_out', loader.dataFolderPath, loader, train)
